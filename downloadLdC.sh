@@ -10,10 +10,7 @@ NEW_TVHEADEND_IP="10.8.0.113"
 NEW_TVHEADEND_PORT="9981"
 
 # Valores a reemplazar del GitHub (URL-encoded)
-OLD_USER="rafatv"
-OLD_PASS="rafatv"
-OLD_IP="172.0.1.113"
-OLD_PORT="9981"
+# OLD_USER y OLD_IP ya no son necesarios porque se hace un reemplazo genérico
 
 # ========================================
 # LIMPIEZA Y DESCARGA
@@ -39,11 +36,13 @@ for file in ListaDeCanales-master/*.tv ListaDeCanales-master/*.tv_org; do
     if [ -f "$file" ]; then
         echo "  Procesando: $(basename $file)"
         
-        # Reemplazar usuario y password (están separados por %3a que es :)
-        sed -i "s|${OLD_USER}%3a${OLD_PASS}@|${CLIENT_USER}%3a${CLIENT_PASS}@|g" "$file"
+        # Reemplazar usuario y password (genérico: todo entre http%3a// y @)
+        # Esto funciona independientemente de las credenciales originales en el repo
+        sed -i "s|http%3a//[^@]*@|http%3a//${CLIENT_USER}%3a${CLIENT_PASS}@|g" "$file"
         
-        # Reemplazar IP y puerto
-        sed -i "s|${OLD_IP}%3a${OLD_PORT}|${NEW_TVHEADEND_IP}%3a${NEW_TVHEADEND_PORT}|g" "$file"
+        # Reemplazar IP y puerto (genérico: todo IP:PUERTO después de @)
+        # Esto funciona independientemente de la IP original en el repo
+        sed -i "s|@[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*%3a[0-9]*|@${NEW_TVHEADEND_IP}%3a${NEW_TVHEADEND_PORT}|g" "$file"
         
         # Reemplazar tipo de servicio (4097=gstreamer, 5001=gstplayer, 5002=exteplayer3)
         if [ ! -z "$SERVICE_TYPE" ]; then
