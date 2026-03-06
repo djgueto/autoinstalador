@@ -9,6 +9,12 @@ SERVICE_TYPE=""
 NEW_TVHEADEND_IP="10.8.0.113"
 NEW_TVHEADEND_PORT="9981"
 
+# Permitir pasar el tipo de servicio como primer argumento al script (ej: ./downloadLdC.sh 4097)
+if [ ! -z "$1" ]; then
+    SERVICE_TYPE="$1"
+    echo "Tipo de servicio forzado por argumento: $SERVICE_TYPE"
+fi
+
 # Valores a reemplazar del GitHub (URL-encoded)
 # OLD_USER y OLD_IP ya no son necesarios porque se hace un reemplazo genérico
 
