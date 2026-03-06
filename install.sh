@@ -12,7 +12,7 @@
 # ------------------------------------------------------------------------------
 # CONFIGURACION DEL REPOSITORIO (CAMBIAR ESTO ANTES DE SUBIR A GITHUB)
 # ------------------------------------------------------------------------------
-REPO_URL="https://raw.githubusercontent.com/djgueto/autoinstalador/main/github_installer"
+REPO_URL="https://raw.githubusercontent.com/djgueto/autoinstalador/main"
 
 # ------------------------------------------------------------------------------
 # COLORES Y FUNCIONES DE LOG
