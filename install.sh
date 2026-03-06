@@ -98,6 +98,10 @@ fi
 log_info "Actualizando lista de paquetes (opkg update)..."
 opkg update
 
+# FIX: Eliminar artkoala si existe, ya que da problemas de configuración (bucle infinito de errores)
+log_info "Limpiando paquetes conflictivos (artkoala)..."
+opkg remove --force-depends enigma2-plugin-systemplugins-artkoala > /dev/null 2>&1
+
 log_info "Instalando paquetes base..."
 opkg install wget curl
 
@@ -173,11 +177,16 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Instalando EPG Import..."
 # Primero intentamos eliminar si existe para instalación limpia
-opkg remove enigma2-plugin-extensions-epgimport --force-depends
+opkg remove enigma2-plugin-extensions-epgimport --force-depends > /dev/null 2>&1
 
 opkg install enigma2-plugin-extensions-epgimport
 if [ $? -ne 0 ]; then
-    log_error "Fallo al instalar EPG Import. Intentando forzar dependencias..."
+    log_error "Fallo al instalar EPG Import. Posible conflicto con dependencias (artkoala)..."
+    
+    # Intentar limpiar artkoala de nuevo, que suele dar problemas
+    opkg remove --force-depends enigma2-plugin-systemplugins-artkoala > /dev/null 2>&1
+    
+    log_info "Reintentando instalación de EPG Import forzando dependencias..."
     opkg install enigma2-plugin-extensions-epgimport --force-depends
 fi
 
