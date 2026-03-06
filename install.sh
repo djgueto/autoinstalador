@@ -219,35 +219,29 @@ while true; do
             echo "-------------------------------------------------"
             echo "   CONFIGURACION DE WIREGUARD"
             echo "-------------------------------------------------"
-            read -p "Introduce la Clave Privada (PrivateKey): " WG_PRIVATE_KEY
-            read -p "Introduce la Dirección IP (Address) [ej: 10.200.0.X/32]: " WG_ADDRESS
-            read -p "Introduce la Clave Pública del Servidor (PublicKey): " WG_PEER_PUBKEY
-            read -p "Introduce el Endpoint del Servidor (IP:Puerto): " WG_ENDPOINT
+            echo "Por favor, PEGA el contenido completo de tu archivo wg0.conf"
+            echo "Cuando termines de pegar, pulsa ENTER y luego Ctrl+D (EOF)."
+            echo "-------------------------------------------------"
             
-            # Crear archivo de configuración
-            cat > /etc/wireguard/wg0.conf << EOF
-[Interface]
-PrivateKey = $WG_PRIVATE_KEY
-Address = $WG_ADDRESS
-DNS = 8.8.8.8
+            # Crear archivo de configuración leyendo desde stdin
+            # Usamos /dev/tty para asegurar que lee del usuario y no del script pipeado
+            cat > /etc/wireguard/wg0.conf < /dev/tty
 
-[Peer]
-PublicKey = $WG_PEER_PUBKEY
-Endpoint = $WG_ENDPOINT
-AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 25
-EOF
-
-            log_info "Archivo wg0.conf creado en /etc/wireguard/"
+            log_info "Archivo wg0.conf guardado en /etc/wireguard/"
             
-            # Habilitar servicio
-            log_info "Habilitando servicio wg-quick@wg0..."
-            if command -v systemctl >/dev/null 2>&1; then
-                systemctl enable wg-quick@wg0
-                systemctl start wg-quick@wg0
+            # Verificar si el archivo se creó y tiene contenido
+            if [ -s /etc/wireguard/wg0.conf ]; then
+                # Habilitar servicio
+                log_info "Habilitando servicio wg-quick@wg0..."
+                if command -v systemctl >/dev/null 2>&1; then
+                    systemctl enable wg-quick@wg0
+                    systemctl start wg-quick@wg0
+                else
+                    log_info "Systemctl no encontrado, intentando inicio manual..."
+                    wg-quick up wg0
+                fi
             else
-                log_info "Systemctl no encontrado, intentando inicio manual..."
-                wg-quick up wg0
+                log_error "El archivo de configuración está vacío. No se ha configurado WireGuard."
             fi
             break
             ;;
