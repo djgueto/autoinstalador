@@ -228,15 +228,242 @@ while true; do
             
             # Verificar si el archivo se creó y tiene contenido
             if [ -s /etc/wireguard/wg0.conf ]; then
-                # Habilitar servicio
-                log_info "Habilitando servicio wg-quick@wg0..."
-                if command -v systemctl >/dev/null 2>&1; then
-                    systemctl enable wg-quick@wg0
-                    systemctl start wg-quick@wg0
-                else
-                    log_info "Systemctl no encontrado, intentando inicio manual..."
-                    wg-quick up wg0
+                log_info "Configurando script de inicio y monitoreo de WireGuard..."
+                
+                # Crear script de inicio /etc/init.d/wireguard
+                cat > /etc/init.d/wireguard << 'EOF'
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          wireguard
+# Required-Start:    $network $remote_fs
+# Required-Stop:     $network $remote_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: WireGuard VPN multi-interface para Enigma2
+### END INIT INFO
+
+DAEMON="/usr/bin/wg-quick"
+INTERFACES="wg0 wg1"
+PIDFILE_BASE="/var/run/wireguard_monitor"
+LOGFILE="/tmp/wireguard-monitor.log"
+MAX_LOG_LINES=200
+HANDSHAKE_TIMEOUT=180
+CHECK_INTERVAL=60
+BOOT_WAIT=15
+
+test -x "$DAEMON" || exit 0
+
+# ── Utilidades ────────────────────────────────────────────────────────────────
+
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOGFILE"
+    if [ -f "$LOGFILE" ]; then
+        LINES=$(wc -l < "$LOGFILE")
+        if [ "$LINES" -gt "$MAX_LOG_LINES" ]; then
+            tail -n "$MAX_LOG_LINES" "$LOGFILE" > "${LOGFILE}.tmp" && mv "${LOGFILE}.tmp" "$LOGFILE"
+        fi
+    fi
+}
+
+wait_for_network() {
+    local TRIES=0
+    local MAX_TRIES=30
+    while [ $TRIES -lt $MAX_TRIES ]; do
+        if ip route | grep -q "^default"; then
+            log_message "Red disponible tras ${TRIES}s"
+            return 0
+        fi
+        sleep 1
+        TRIES=$((TRIES + 1))
+    done
+    log_message "ADVERTENCIA: Red no confirmada tras ${MAX_TRIES}s, intentando de todas formas"
+    return 1
+}
+
+is_interface_up() {
+    ip link show "$1" > /dev/null 2>&1
+}
+
+bring_up() {
+    local IFACE=$1
+    "$DAEMON" down "$IFACE" > /dev/null 2>&1
+    sleep 2
+    "$DAEMON" up "$IFACE" > /dev/null 2>&1
+}
+
+# ── Monitor por interfaz ──────────────────────────────────────────────────────
+
+check_and_reconnect() {
+    local INTERFACE=$1
+    local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
+
+    log_message "Monitor arrancado para $INTERFACE (PID: $$)"
+
+    while true; do
+        sleep "$CHECK_INTERVAL"
+
+        if ! is_interface_up "$INTERFACE"; then
+            log_message "[$INTERFACE] Interfaz caida, reconectando..."
+            bring_up "$INTERFACE"
+            if is_interface_up "$INTERFACE"; then
+                log_message "[$INTERFACE] Reconexion OK"
+            else
+                log_message "[$INTERFACE] ERROR al reconectar"
+            fi
+        else
+            if command -v wg > /dev/null 2>&1; then
+                local LAST_HS
+                LAST_HS=$(wg show "$INTERFACE" latest-handshakes 2>/dev/null | awk 'NR==1{print $2}')
+                if [ -n "$LAST_HS" ] && [ "$LAST_HS" -gt 0 ] 2>/dev/null; then
+                    local CURRENT DIFF
+                    CURRENT=$(date +%s)
+                    DIFF=$((CURRENT - LAST_HS))
+                    if [ "$DIFF" -gt "$HANDSHAKE_TIMEOUT" ]; then
+                        log_message "[$INTERFACE] Sin handshake hace ${DIFF}s, reconectando..."
+                        bring_up "$INTERFACE"
+                        if is_interface_up "$INTERFACE"; then
+                            log_message "[$INTERFACE] Reconexion por handshake OK"
+                        else
+                            log_message "[$INTERFACE] ERROR reconexion por handshake"
+                        fi
+                    fi
                 fi
+            fi
+        fi
+    done
+}
+
+# ── Acciones principales ──────────────────────────────────────────────────────
+
+start_wireguard() {
+    log_message "=== Iniciando WireGuard ==="
+    echo "Esperando a que la red este disponible..."
+    sleep "$BOOT_WAIT"
+    wait_for_network
+
+    for INTERFACE in $INTERFACES; do
+        local CONF="/etc/wireguard/${INTERFACE}.conf"
+        if [ ! -f "$CONF" ]; then
+            log_message "[$INTERFACE] No existe $CONF, omitiendo"
+            continue
+        fi
+
+        local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
+
+        if [ -f "$PIDFILE" ]; then
+            kill "$(cat "$PIDFILE")" > /dev/null 2>&1
+            rm -f "$PIDFILE"
+        fi
+
+        echo "Iniciando $INTERFACE..."
+        "$DAEMON" up "$INTERFACE" 2>> "$LOGFILE"
+
+        if is_interface_up "$INTERFACE"; then
+            log_message "[$INTERFACE] Interfaz activa"
+        else
+            log_message "[$INTERFACE] ERROR al iniciar, reintentando..."
+            sleep 3
+            "$DAEMON" up "$INTERFACE" 2>> "$LOGFILE"
+        fi
+
+        check_and_reconnect "$INTERFACE" &
+        echo $! > "$PIDFILE"
+        log_message "[$INTERFACE] Monitor iniciado (PID: $!)"
+    done
+}
+
+stop_wireguard() {
+    log_message "=== Deteniendo WireGuard ==="
+    for INTERFACE in $INTERFACES; do
+        echo "Deteniendo $INTERFACE..."
+        local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
+
+        if [ -f "$PIDFILE" ]; then
+            kill "$(cat "$PIDFILE")" > /dev/null 2>&1
+            rm -f "$PIDFILE"
+            log_message "[$INTERFACE] Monitor detenido"
+        fi
+
+        "$DAEMON" down "$INTERFACE" > /dev/null 2>&1
+        log_message "[$INTERFACE] Interfaz bajada"
+    done
+}
+
+status_wireguard() {
+    for INTERFACE in $INTERFACES; do
+        if [ ! -f "/etc/wireguard/${INTERFACE}.conf" ]; then
+            continue
+        fi
+
+        if is_interface_up "$INTERFACE"; then
+            echo "Interfaz $INTERFACE : ACTIVA"
+            if command -v wg > /dev/null 2>&1; then
+                local LAST_HS
+                LAST_HS=$(wg show "$INTERFACE" latest-handshakes 2>/dev/null | awk 'NR==1{print $2}')
+                if [ -n "$LAST_HS" ] && [ "$LAST_HS" -gt 0 ] 2>/dev/null; then
+                    local DIFF=$(( $(date +%s) - LAST_HS ))
+                    echo "  Ultimo handshake: hace ${DIFF}s"
+                fi
+            fi
+        else
+            echo "Interfaz $INTERFACE : CAIDA"
+        fi
+
+        local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
+        if [ -f "$PIDFILE" ]; then
+            local PID
+            PID=$(cat "$PIDFILE")
+            if kill -0 "$PID" 2>/dev/null; then
+                echo "  Monitor : ACTIVO (PID: $PID)"
+            else
+                echo "  Monitor : MUERTO (PID huerfano: $PID)"
+            fi
+        else
+            echo "  Monitor : NO INICIADO"
+        fi
+    done
+
+    echo ""
+    echo "--- Ultimos logs ---"
+    tail -20 "$LOGFILE" 2>/dev/null || echo "Sin logs"
+}
+
+# ── Dispatcher ────────────────────────────────────────────────────────────────
+
+case "$1" in
+    start)   start_wireguard ;;
+    stop)    stop_wireguard ;;
+    restart) stop_wireguard; sleep 2; start_wireguard ;;
+    status)  status_wireguard ;;
+    *)
+        echo "Uso: /etc/init.d/wireguard {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0
+EOF
+
+                # Dar permisos de ejecución
+                chmod +x /etc/init.d/wireguard
+
+                # Configurar inicio automático (symlinks manuales para asegurar compatibilidad)
+                log_info "Configurando inicio automático..."
+                ln -sf /etc/init.d/wireguard /etc/rc0.d/K70wireguard
+                ln -sf /etc/init.d/wireguard /etc/rc1.d/K70wireguard
+                ln -sf /etc/init.d/wireguard /etc/rc2.d/S10wireguard
+                ln -sf /etc/init.d/wireguard /etc/rc3.d/S10wireguard
+                ln -sf /etc/init.d/wireguard /etc/rc4.d/S10wireguard
+                ln -sf /etc/init.d/wireguard /etc/rc5.d/S10wireguard
+                ln -sf /etc/init.d/wireguard /etc/rc6.d/K70wireguard
+
+                # Intentar también update-rc.d por si acaso
+                update-rc.d wireguard defaults > /dev/null 2>&1
+
+                # Iniciar servicio
+                log_info "Iniciando servicio WireGuard..."
+                /etc/init.d/wireguard start
+
             else
                 log_error "El archivo de configuración está vacío. No se ha configurado WireGuard."
             fi
