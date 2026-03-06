@@ -105,6 +105,35 @@ log_info "Instalando herramientas de red (iptables, resolvconf, wireguard)..."
 opkg install iptables resolvconf wireguard-tools
 
 # ------------------------------------------------------------------------------
+# 3b. INSTALAR SERVICEAPP Y REPRODUCTORES (Si se seleccionó 5001/5002)
+# ------------------------------------------------------------------------------
+if [ "$SERVICE_TYPE" = "5001" ] || [ "$SERVICE_TYPE" = "5002" ]; then
+    log_info "Seleccionado tipo de servicio $SERVICE_TYPE. Instalando ServiceApp y reproductores..."
+    
+    # Actualizar feeds de nuevo por si acaso
+    # opkg update # Ya se hizo arriba
+    
+    log_info "Instalando ServiceApp..."
+    # Intentar instalar el plugin de sistema
+    opkg install enigma2-plugin-systemplugins-serviceapp
+    if [ $? -ne 0 ]; then
+        log_info "Intentando alternativa: enigma2-plugin-extensions-serviceapp..."
+        opkg install enigma2-plugin-extensions-serviceapp
+    fi
+
+    log_info "Instalando exteplayer3 y gstplayer..."
+    opkg install exteplayer3
+    opkg install gstplayer
+    opkg install ffmpeg
+    
+    if [ $? -eq 0 ]; then
+        log_info "Reproductores externos instalados correctamente."
+    else
+        log_error "Hubo problemas instalando algunos reproductores. Verifique los feeds."
+    fi
+fi
+
+# ------------------------------------------------------------------------------
 # 4. INSTALAR Y CONFIGURAR ZEROTIER
 # ------------------------------------------------------------------------------
 log_info "Instalando ZeroTier..."
@@ -507,10 +536,12 @@ fi
 # ------------------------------------------------------------------------------
 # 9. EJECUTAR SCRIPT DE PICONS (downloadLoT.sh)
 # ------------------------------------------------------------------------------
-# Nota: Este script es instalado automáticamente por Actualizador.ipk en /usr/script/
-log_info "Ejecutando script de picons (downloadLoT.sh)..."
+log_info "Instalando y ejecutando script de picons (downloadLoT.sh)..."
 
-if [ -f /usr/script/downloadLoT.sh ]; then
+# Descargar script (por si Actualizador.ipk no lo trajo o está desactualizado)
+wget --no-check-certificate "$REPO_URL/downloadLoT.sh" -O /usr/script/downloadLoT.sh
+
+if [ -s /usr/script/downloadLoT.sh ]; then
     chmod +x /usr/script/downloadLoT.sh
     /usr/script/downloadLoT.sh
     if [ $? -eq 0 ]; then
@@ -519,7 +550,7 @@ if [ -f /usr/script/downloadLoT.sh ]; then
         log_error "Hubo un error al ejecutar downloadLoT.sh"
     fi
 else
-    log_error "No se encontró /usr/script/downloadLoT.sh (¿Actualizador.ipk falló?)"
+    log_error "No se pudo descargar downloadLoT.sh del repositorio."
 fi
 
 # ------------------------------------------------------------------------------
