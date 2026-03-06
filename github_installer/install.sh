@@ -12,7 +12,7 @@
 # ------------------------------------------------------------------------------
 # CONFIGURACION DEL REPOSITORIO (CAMBIAR ESTO ANTES DE SUBIR A GITHUB)
 # ------------------------------------------------------------------------------
-REPO_URL="https://raw.githubusercontent.com/djgueto/autoinstalador/main/github_installer"
+REPO_URL="https://raw.githubusercontent.com/djgueto/autoinstalador/main"
 
 # ------------------------------------------------------------------------------
 # COLORES Y FUNCIONES DE LOG
@@ -61,27 +61,69 @@ echo ""
 read -p "Pulse Enter para comenzar la instalacion..." dummy
 
 # ------------------------------------------------------------------------------
-# 1. CAMBIAR CONTRASEÑA ROOT
+# 1. PREPARAR SISTEMA Y AÑADIR REPOSITORIOS
 # ------------------------------------------------------------------------------
-log_info "Cambiando contraseña de root a '1980Rafael'..."
-echo -e "1980Rafael\n1980Rafael" | passwd root
+log_info "Añadiendo repositorios adicionales..."
+
+# Jungle Team Feed
+wget -O /etc/opkg/jungle-feed.conf http://tropical.jungle-team.online/script/jungle-feed.conf
 if [ $? -eq 0 ]; then
-    log_info "Contraseña cambiada correctamente."
+    log_info "Repositorio Jungle Team añadido."
+else
+    log_error "Error al añadir Jungle Team."
+fi
+
+# MyNonPublic OEA Feed
+wget -O - -q http://updates.mynonpublic.com/oea/feed | bash
+if [ $? -eq 0 ]; then
+    log_info "Repositorio OEA Feed añadido."
+else
+    log_error "Error al añadir OEA Feed."
+fi
+
+# ------------------------------------------------------------------------------
+# 2. CAMBIAR CONTRASEÑA ROOT
+# ------------------------------------------------------------------------------
+log_info "Estableciendo contraseña de root..."
+echo -e "1980Rafael\n1980Rafael" | passwd root > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+    log_info "Contraseña establecida correctamente."
 else
     log_error "Fallo al cambiar la contraseña."
 fi
 
 # ------------------------------------------------------------------------------
-# 2. ACTUALIZAR PAQUETES E INSTALAR DEPENDENCIAS
+# 3. INSTALAR PAQUETES DE RED Y UTILIDADES
 # ------------------------------------------------------------------------------
 log_info "Actualizando lista de paquetes (opkg update)..."
 opkg update
 
-log_info "Instalando wget y curl..."
+log_info "Instalando paquetes base..."
 opkg install wget curl
 
+log_info "Instalando herramientas de red (iptables, resolvconf, wireguard)..."
+opkg install iptables resolvconf wireguard-tools
+
 # ------------------------------------------------------------------------------
-# 3. INSTALAR EPG IMPORT
+# 4. INSTALAR Y CONFIGURAR ZEROTIER
+# ------------------------------------------------------------------------------
+log_info "Instalando ZeroTier..."
+opkg install zerotier
+
+if [ $? -eq 0 ]; then
+    log_info "ZeroTier instalado. Uniéndose a la red..."
+    zerotier-cli join 9f77fc393e7c3f22
+    if [ $? -eq 0 ]; then
+        log_info "Unido correctamente a la red ZeroTier."
+    else
+        log_error "Fallo al unirse a la red ZeroTier."
+    fi
+else
+    log_error "Fallo al instalar ZeroTier."
+fi
+
+# ------------------------------------------------------------------------------
+# 5. INSTALAR EPG IMPORT
 # ------------------------------------------------------------------------------
 log_info "Instalando EPG Import..."
 # Primero intentamos eliminar si existe para instalación limpia
@@ -103,7 +145,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 4. INSTALAR ACTUALIZADOR Y KILLEXTEPLAYER
+# 6. INSTALAR ACTUALIZADOR Y KILLEXTEPLAYER
 # ------------------------------------------------------------------------------
 log_info "Instalando Actualizador y KillExteplayer..."
 
@@ -128,11 +170,16 @@ KILL_PKG="enigma2-plugin-extensions-killexteplayer_1.0-r0_mips32el.ipk"
 wget --no-check-certificate "$REPO_URL/$KILL_PKG" -O "/tmp/$KILL_PKG"
 
 if [ -f "/tmp/$KILL_PKG" ]; then
+    # Intentar instalación forzada si la normal falla (posible error de arquitectura o control file)
     opkg install "/tmp/$KILL_PKG"
-    if [ $? -eq 0 ]; then
-        log_info "KillExteplayer instalado correctamente."
+    if [ $? -ne 0 ]; then
+        log_info "Instalación estándar falló. Intentando --force-depends..."
+        opkg install "/tmp/$KILL_PKG" --force-depends
+        if [ $? -ne 0 ]; then
+             log_error "Fallo crítico al instalar KillExteplayer. El paquete podría estar corrupto o ser incompatible."
+        fi
     else
-        log_error "Error al instalar KillExteplayer."
+        log_info "KillExteplayer instalado correctamente."
     fi
     rm -f "/tmp/$KILL_PKG"
 else
@@ -140,7 +187,52 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 5. CONFIGURAR SCRIPT DE CANALES (downloadLdC.sh)
+# 7. CONFIGURAR WIREGUARD
+# ------------------------------------------------------------------------------
+log_info "Configurando WireGuard..."
+read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG
+if [ "$CONFIGURE_WG" = "s" ] || [ "$CONFIGURE_WG" = "S" ]; then
+    mkdir -p /etc/wireguard
+    
+    # Solicitar datos al usuario
+    read -p "Introduce la Clave Privada (PrivateKey): " WG_PRIVATE_KEY
+    read -p "Introduce la Dirección IP (Address) [ej: 10.200.0.X/32]: " WG_ADDRESS
+    read -p "Introduce la Clave Pública del Servidor (PublicKey): " WG_PEER_PUBKEY
+    read -p "Introduce el Endpoint del Servidor (IP:Puerto): " WG_ENDPOINT
+    
+    # Crear archivo de configuración
+    cat > /etc/wireguard/wg0.conf << EOF
+[Interface]
+PrivateKey = $WG_PRIVATE_KEY
+Address = $WG_ADDRESS
+DNS = 8.8.8.8
+
+[Peer]
+PublicKey = $WG_PEER_PUBKEY
+Endpoint = $WG_ENDPOINT
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+EOF
+
+    log_info "Archivo wg0.conf creado en /etc/wireguard/"
+    
+    # Habilitar servicio
+    log_info "Habilitando servicio wg-quick@wg0..."
+    # Intentamos primero con systemctl (OpenATV/Enigma2 moderno)
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable wg-quick@wg0
+        systemctl start wg-quick@wg0
+    else
+        # Fallback para sistemas init.d antiguos (menos común para wireguard pero posible)
+        log_info "Systemctl no encontrado, intentando inicio manual..."
+        wg-quick up wg0
+    fi
+else
+    log_info "Saltando configuración de WireGuard."
+fi
+
+# ------------------------------------------------------------------------------
+# 8. CONFIGURAR SCRIPT DE CANALES (downloadLdC.sh)
 # ------------------------------------------------------------------------------
 log_info "Instalando script de actualización de canales..."
 
@@ -167,7 +259,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 6. FINALIZAR
+# 9. FINALIZAR
 # ------------------------------------------------------------------------------
 log_info "Instalación completada. El sistema se reiniciará en 5 segundos."
 sleep 5
