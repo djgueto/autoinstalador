@@ -278,7 +278,25 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 9. FINALIZAR
+# 9. EJECUTAR SCRIPT DE PICONS (downloadLoT.sh)
+# ------------------------------------------------------------------------------
+# Nota: Este script es instalado automáticamente por Actualizador.ipk en /usr/script/
+log_info "Ejecutando script de picons (downloadLoT.sh)..."
+
+if [ -f /usr/script/downloadLoT.sh ]; then
+    chmod +x /usr/script/downloadLoT.sh
+    /usr/script/downloadLoT.sh
+    if [ $? -eq 0 ]; then
+        log_info "Picons descargados e instalados correctamente."
+    else
+        log_error "Hubo un error al ejecutar downloadLoT.sh"
+    fi
+else
+    log_error "No se encontró /usr/script/downloadLoT.sh (¿Actualizador.ipk falló?)"
+fi
+
+# ------------------------------------------------------------------------------
+# 10. FINALIZAR
 # ------------------------------------------------------------------------------
 log_info "Instalación completada. El sistema se reiniciará en 5 segundos."
 sleep 5
