@@ -110,18 +110,30 @@ opkg install iptables resolvconf wireguard-tools
 if [ "$SERVICE_TYPE" = "5001" ] || [ "$SERVICE_TYPE" = "5002" ]; then
     log_info "Seleccionado tipo de servicio $SERVICE_TYPE. Instalando ServiceApp y reproductores..."
     
-    # Actualizar feeds de nuevo por si acaso
-    # opkg update # Ya se hizo arriba
+    # Actualizar feeds de nuevo para asegurar que encontramos los paquetes
+    log_info "Actualizando listas de paquetes..."
+    opkg update
     
     log_info "Instalando ServiceApp..."
-    # Intentar instalar el plugin de sistema
+    # Intentar instalar el plugin de sistema (nombre estándar en OpenATV y mayoría de imágenes)
     opkg install enigma2-plugin-systemplugins-serviceapp
     if [ $? -ne 0 ]; then
-        log_info "Intentando alternativa: enigma2-plugin-extensions-serviceapp..."
+        log_error "No se pudo instalar 'enigma2-plugin-systemplugins-serviceapp'."
+        log_info "Intentando alternativa: 'enigma2-plugin-extensions-serviceapp'..."
         opkg install enigma2-plugin-extensions-serviceapp
+        
+        if [ $? -ne 0 ]; then
+            log_error "CRITICO: No se encontró el paquete ServiceApp en los repositorios."
+            echo "---------------------------------------------------------------------"
+            echo "AVISO IMPORTANTE:"
+            echo "Para usar el modo $SERVICE_TYPE, NECESITAS tener instalado ServiceApp."
+            echo "Por favor, instálalo manualmente desde el menú de Plugins de tu imagen:"
+            echo "  Menú -> Plugins -> Descargar Plugins -> SystemPlugins -> serviceapp"
+            echo "---------------------------------------------------------------------"
+        fi
     fi
 
-    log_info "Instalando exteplayer3 y gstplayer..."
+    log_info "Instalando binarios de reproductores (exteplayer3, gstplayer, ffmpeg)..."
     opkg install exteplayer3
     opkg install gstplayer
     opkg install ffmpeg
@@ -129,7 +141,7 @@ if [ "$SERVICE_TYPE" = "5001" ] || [ "$SERVICE_TYPE" = "5002" ]; then
     if [ $? -eq 0 ]; then
         log_info "Reproductores externos instalados correctamente."
     else
-        log_error "Hubo problemas instalando algunos reproductores. Verifique los feeds."
+        log_error "Hubo problemas instalando algunos binarios. Verifique los feeds."
     fi
 fi
 
