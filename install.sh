@@ -111,7 +111,12 @@ log_info "Instalando ZeroTier..."
 opkg install zerotier
 
 if [ $? -eq 0 ]; then
-    log_info "ZeroTier instalado. Uniéndose a la red..."
+    log_info "ZeroTier instalado. Iniciando servicio..."
+    # Asegurar que el servicio está iniciado antes de unirse
+    /etc/init.d/zerotier-one start > /dev/null 2>&1
+    sleep 2
+    
+    log_info "Uniéndose a la red..."
     zerotier-cli join 9f77fc393e7c3f22
     if [ $? -eq 0 ]; then
         log_info "Unido correctamente a la red ZeroTier."
@@ -149,59 +154,78 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Instalando Actualizador y KillExteplayer..."
 
+# Función para verificar descarga
+check_download() {
+    if [ ! -s "$1" ]; then
+        log_error "El archivo $1 está vacío o no se descargó. Verifica conexión y URL."
+        rm -f "$1"
+        return 1
+    fi
+    return 0
+}
+
 # Descargar e instalar Actualizador.ipk
 log_info "Procesando Actualizador.ipk..."
-wget --no-check-certificate "$REPO_URL/Actualizador.ipk" -O /tmp/Actualizador.ipk
-if [ -f /tmp/Actualizador.ipk ]; then
-    opkg install /tmp/Actualizador.ipk
+cd /tmp
+wget --no-check-certificate "$REPO_URL/Actualizador.ipk" -O Actualizador.ipk
+
+if check_download "Actualizador.ipk"; then
+    opkg install Actualizador.ipk
     if [ $? -eq 0 ]; then
         log_info "Actualizador instalado correctamente."
     else
         log_error "Error al instalar Actualizador.ipk"
     fi
-    rm -f /tmp/Actualizador.ipk
-else
-    log_error "No se pudo descargar Actualizador.ipk. Verifica la URL del repo."
+    rm -f Actualizador.ipk
 fi
 
 # Descargar e instalar enigma2-plugin-extensions-killexteplayer
 log_info "Procesando KillExteplayer..."
 KILL_PKG="enigma2-plugin-extensions-killexteplayer_1.0-r0_mips32el.ipk"
-wget --no-check-certificate "$REPO_URL/$KILL_PKG" -O "/tmp/$KILL_PKG"
+wget --no-check-certificate "$REPO_URL/$KILL_PKG" -O "$KILL_PKG"
 
-if [ -f "/tmp/$KILL_PKG" ]; then
+if check_download "$KILL_PKG"; then
     # Intentar instalación forzada si la normal falla (posible error de arquitectura o control file)
-    opkg install "/tmp/$KILL_PKG"
+    opkg install "$KILL_PKG"
     if [ $? -ne 0 ]; then
         log_info "Instalación estándar falló. Intentando --force-depends..."
-        opkg install "/tmp/$KILL_PKG" --force-depends
+        opkg install "$KILL_PKG" --force-depends
         if [ $? -ne 0 ]; then
              log_error "Fallo crítico al instalar KillExteplayer. El paquete podría estar corrupto o ser incompatible."
         fi
     else
         log_info "KillExteplayer instalado correctamente."
     fi
-    rm -f "/tmp/$KILL_PKG"
-else
-    log_error "No se pudo descargar $KILL_PKG. Verifica la URL del repo."
+    rm -f "$KILL_PKG"
 fi
+
+# Volver al directorio original (aunque no es estrictamente necesario en este script)
+cd - > /dev/null
 
 # ------------------------------------------------------------------------------
 # 7. CONFIGURAR WIREGUARD
 # ------------------------------------------------------------------------------
 log_info "Configurando WireGuard..."
-read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG
-if [ "$CONFIGURE_WG" = "s" ] || [ "$CONFIGURE_WG" = "S" ]; then
-    mkdir -p /etc/wireguard
-    
-    # Solicitar datos al usuario
-    read -p "Introduce la Clave Privada (PrivateKey): " WG_PRIVATE_KEY
-    read -p "Introduce la Dirección IP (Address) [ej: 10.200.0.X/32]: " WG_ADDRESS
-    read -p "Introduce la Clave Pública del Servidor (PublicKey): " WG_PEER_PUBKEY
-    read -p "Introduce el Endpoint del Servidor (IP:Puerto): " WG_ENDPOINT
-    
-    # Crear archivo de configuración
-    cat > /etc/wireguard/wg0.conf << EOF
+
+# Preguntar siempre, pero permitir saltar con Enter vacío si se desea (opcional)
+# El usuario indicó que NO le preguntaba, así que forzamos la pregunta claramente.
+while true; do
+    read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG
+    case $CONFIGURE_WG in
+        [Ss]* ) 
+            mkdir -p /etc/wireguard
+            
+            # Solicitar datos al usuario
+            echo "-------------------------------------------------"
+            echo "   CONFIGURACION DE WIREGUARD"
+            echo "-------------------------------------------------"
+            read -p "Introduce la Clave Privada (PrivateKey): " WG_PRIVATE_KEY
+            read -p "Introduce la Dirección IP (Address) [ej: 10.200.0.X/32]: " WG_ADDRESS
+            read -p "Introduce la Clave Pública del Servidor (PublicKey): " WG_PEER_PUBKEY
+            read -p "Introduce el Endpoint del Servidor (IP:Puerto): " WG_ENDPOINT
+            
+            # Crear archivo de configuración
+            cat > /etc/wireguard/wg0.conf << EOF
 [Interface]
 PrivateKey = $WG_PRIVATE_KEY
 Address = $WG_ADDRESS
@@ -214,22 +238,26 @@ AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 EOF
 
-    log_info "Archivo wg0.conf creado en /etc/wireguard/"
-    
-    # Habilitar servicio
-    log_info "Habilitando servicio wg-quick@wg0..."
-    # Intentamos primero con systemctl (OpenATV/Enigma2 moderno)
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl enable wg-quick@wg0
-        systemctl start wg-quick@wg0
-    else
-        # Fallback para sistemas init.d antiguos (menos común para wireguard pero posible)
-        log_info "Systemctl no encontrado, intentando inicio manual..."
-        wg-quick up wg0
-    fi
-else
-    log_info "Saltando configuración de WireGuard."
-fi
+            log_info "Archivo wg0.conf creado en /etc/wireguard/"
+            
+            # Habilitar servicio
+            log_info "Habilitando servicio wg-quick@wg0..."
+            if command -v systemctl >/dev/null 2>&1; then
+                systemctl enable wg-quick@wg0
+                systemctl start wg-quick@wg0
+            else
+                log_info "Systemctl no encontrado, intentando inicio manual..."
+                wg-quick up wg0
+            fi
+            break
+            ;;
+        [Nn]* ) 
+            log_info "Saltando configuración de WireGuard."
+            break
+            ;;
+        * ) echo "Por favor, responde 's' para sí o 'n' para no.";;
+    esac
+done
 
 # ------------------------------------------------------------------------------
 # 8. CONFIGURAR SCRIPT DE CANALES (downloadLdC.sh)
