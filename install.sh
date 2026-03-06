@@ -38,14 +38,14 @@ echo "   ASISTENTE DE INSTALACION ENIGMA2"
 echo "================================================="
 echo ""
 
-read -p "Introduce el USUARIO: " CLIENT_USER
-read -p "Introduce la CONTRASEÑA: " CLIENT_PASS
+read -p "Introduce el USUARIO: " CLIENT_USER < /dev/tty
+read -p "Introduce la CONTRASEÑA: " CLIENT_PASS < /dev/tty
 echo ""
 echo "Tipo de Servicio (por defecto 4097):"
 echo "  4097 - GStreamer (Estándar)"
 echo "  5001 - GSTPlayer"
 echo "  5002 - ExtePlayer3"
-read -p "Selecciona (Enter para 4097): " SERVICE_TYPE
+read -p "Selecciona (Enter para 4097): " SERVICE_TYPE < /dev/tty
 
 if [ -z "$SERVICE_TYPE" ]; then
     SERVICE_TYPE="4097"
@@ -58,7 +58,7 @@ echo "Pass:    $CLIENT_PASS"
 echo "Tipo:    $SERVICE_TYPE"
 echo "-------------------------------------------------"
 echo ""
-read -p "Pulse Enter para comenzar la instalacion..." dummy
+read -p "Pulse Enter para comenzar la instalacion..." dummy < /dev/tty
 
 # ------------------------------------------------------------------------------
 # 1. PREPARAR SISTEMA Y AÑADIR REPOSITORIOS
@@ -170,7 +170,7 @@ cd /tmp
 wget --no-check-certificate "$REPO_URL/Actualizador.ipk" -O Actualizador.ipk
 
 if check_download "Actualizador.ipk"; then
-    opkg install Actualizador.ipk
+    opkg install Actualizador.ipk --force-reinstall --force-overwrite
     if [ $? -eq 0 ]; then
         log_info "Actualizador instalado correctamente."
     else
@@ -181,22 +181,19 @@ fi
 
 # Descargar e instalar enigma2-plugin-extensions-killexteplayer
 log_info "Procesando KillExteplayer..."
-KILL_PKG="enigma2-plugin-extensions-killexteplayer_1.0-r0_mips32el.ipk"
-wget --no-check-certificate "$REPO_URL/$KILL_PKG" -O "$KILL_PKG"
+KILL_SCRIPT="killexteplayer_installer.sh"
+wget --no-check-certificate "$REPO_URL/$KILL_SCRIPT" -O "$KILL_SCRIPT"
 
-if check_download "$KILL_PKG"; then
-    # Intentar instalación forzada si la normal falla (posible error de arquitectura o control file)
-    opkg install "$KILL_PKG"
-    if [ $? -ne 0 ]; then
-        log_info "Instalación estándar falló. Intentando --force-depends..."
-        opkg install "$KILL_PKG" --force-depends
-        if [ $? -ne 0 ]; then
-             log_error "Fallo crítico al instalar KillExteplayer. El paquete podría estar corrupto o ser incompatible."
-        fi
-    else
+if check_download "$KILL_SCRIPT"; then
+    log_info "Ejecutando instalador de KillExteplayer..."
+    chmod +x "$KILL_SCRIPT"
+    sh "$KILL_SCRIPT"
+    if [ $? -eq 0 ]; then
         log_info "KillExteplayer instalado correctamente."
+    else
+        log_error "Fallo al instalar KillExteplayer."
     fi
-    rm -f "$KILL_PKG"
+    rm -f "$KILL_SCRIPT"
 fi
 
 # Volver al directorio original (aunque no es estrictamente necesario en este script)
@@ -210,7 +207,7 @@ log_info "Configurando WireGuard..."
 # Preguntar siempre, pero permitir saltar con Enter vacío si se desea (opcional)
 # El usuario indicó que NO le preguntaba, así que forzamos la pregunta claramente.
 while true; do
-    read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG
+    read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG < /dev/tty
     case $CONFIGURE_WG in
         [Ss]* ) 
             mkdir -p /etc/wireguard
