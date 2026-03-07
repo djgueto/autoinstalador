@@ -82,6 +82,11 @@ else
     fi
 fi
 
+# Detener Enigma2 para liberar recursos y permitir edición segura de settings
+log_info "Deteniendo interfaz gráfica (Enigma2) para instalación segura..."
+init 4
+sleep 5
+
 # ------------------------------------------------------------------------------
 # 1. PREPARAR SISTEMA Y AÑADIR REPOSITORIOS
 # ------------------------------------------------------------------------------
@@ -219,6 +224,55 @@ if [ $? -eq 0 ]; then
     log_info "Configuración EPG descargada."
 else
     log_error "No se pudo descargar epgimport.conf del repositorio."
+fi
+
+# ------------------------------------------------------------------------------
+# 5b. CONFIGURAR SETTINGS DE ENIGMA2
+# ------------------------------------------------------------------------------
+log_info "Aplicando configuración óptima a Enigma2..."
+SETTINGS_FILE="/etc/enigma2/settings"
+
+# Función auxiliar para añadir configuración si no existe
+add_setting() {
+    local key="$1"
+    local line="$2"
+    if ! grep -q "^$key" "$SETTINGS_FILE"; then
+        echo "$line" >> "$SETTINGS_FILE"
+    fi
+}
+
+# Solo modificar si el archivo existe
+if [ -f "$SETTINGS_FILE" ]; then
+    # EPG Import Config
+    add_setting "config.plugins.epgimport.deepstandby" "config.plugins.epgimport.deepstandby=wakeup"
+    add_setting "config.plugins.epgimport.enabled" "config.plugins.epgimport.enabled=True"
+    add_setting "config.plugins.epgimport.runboot" "config.plugins.epgimport.runboot=1"
+    add_setting "config.plugins.epgimport.import_onlybouquet" "config.plugins.epgimport.import_onlybouquet=False"
+    add_setting "config.plugins.epgimport.import_onlyiptv" "config.plugins.epgimport.import_onlyiptv=False"
+    add_setting "config.plugins.epgimport.shutdown" "config.plugins.epgimport.shutdown=True"
+    add_setting "config.plugins.epgimport.wakeup" "config.plugins.epgimport.wakeup=4:30"
+    
+    # Extra EPG Import settings
+    add_setting "config.plugins.extra_epgimport.day_import.1" "config.plugins.extra_epgimport.day_import.1=False"
+    add_setting "config.plugins.extra_epgimport.day_import.3" "config.plugins.extra_epgimport.day_import.3=False"
+    add_setting "config.plugins.extra_epgimport.day_import.5" "config.plugins.extra_epgimport.day_import.5=False"
+    add_setting "config.plugins.extra_epgimport.day_import.6" "config.plugins.extra_epgimport.day_import.6=False"
+    
+    # EPG Search
+    add_setting "config.plugins.epgsearch.numorbpos" "config.plugins.epgsearch.numorbpos=0"
+    
+    # OpenWebif Security & Port
+    add_setting "config.OpenWebif.auth" "config.OpenWebif.auth=True"
+    add_setting "config.OpenWebif.port" "config.OpenWebif.port=8080"
+    
+    # Usage & Interface
+    add_setting "config.usage.numberMode" "config.usage.numberMode=1"
+    add_setting "config.usage.fbc_automatic_standby" "config.usage.fbc_automatic_standby=True"
+    add_setting "config.usage.service_icon_enable" "config.usage.service_icon_enable=True"
+    
+    log_info "Configuración de Enigma2 actualizada."
+else
+    log_error "No se encontró $SETTINGS_FILE. Saltando configuración."
 fi
 
 # ------------------------------------------------------------------------------
