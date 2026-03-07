@@ -581,10 +581,10 @@ fi
 # ------------------------------------------------------------------------------
 log_info "Instalando y ejecutando script de picons (downloadLoT.sh)..."
 
-# Descargar script (por si Actualizador.ipk no lo trajo o está desactualizado)
-wget --no-check-certificate "$REPO_URL/downloadLoT.sh" -O /usr/script/downloadLoT.sh
+# NOTA: Este script es instalado automáticamente por Actualizador.ipk en /usr/script/
+# No es necesario descargarlo de GitHub si el IPK funcionó correctamente.
 
-if [ -s /usr/script/downloadLoT.sh ]; then
+if [ -f /usr/script/downloadLoT.sh ]; then
     chmod +x /usr/script/downloadLoT.sh
     /usr/script/downloadLoT.sh
     if [ $? -eq 0 ]; then
@@ -593,7 +593,8 @@ if [ -s /usr/script/downloadLoT.sh ]; then
         log_error "Hubo un error al ejecutar downloadLoT.sh"
     fi
 else
-    log_error "No se pudo descargar downloadLoT.sh del repositorio."
+    log_error "No se encontró /usr/script/downloadLoT.sh (¿Actualizador.ipk falló?)"
+    # Si falla, podríamos intentar descargarlo si estuviera en el repo, pero como no está, solo avisamos.
 fi
 
 # ------------------------------------------------------------------------------
