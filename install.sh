@@ -61,6 +61,28 @@ echo ""
 read -p "Pulse Enter para comenzar la instalacion..." dummy < /dev/tty
 
 # ------------------------------------------------------------------------------
+# 0. CONFIGURACION BASICA (DNS Y HORA)
+# ------------------------------------------------------------------------------
+log_info "Configurando DNS (Google)..."
+echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > /etc/resolv.conf
+
+log_info "Intentando sincronizar hora..."
+# Intentar sincronizar hora usando varios métodos
+if command -v ntpdate > /dev/null 2>&1; then
+    ntpdate -u pool.ntp.org
+elif command -v rdate > /dev/null 2>&1; then
+    rdate -s pool.ntp.org
+else
+    # Fallback: Intentar obtener fecha de google si no hay herramientas ntp
+    # Esto es útil si el deco tiene fecha de 1970 y fallan los certificados SSL
+    log_info "Herramientas NTP no encontradas, intentando ajuste básico..."
+    CURRENT_DATE=$(wget --no-check-certificate -S --spider https://google.com 2>&1 | grep "Date:" | sed 's/  Date: //')
+    if [ -n "$CURRENT_DATE" ]; then
+        date -s "$CURRENT_DATE"
+    fi
+fi
+
+# ------------------------------------------------------------------------------
 # 1. PREPARAR SISTEMA Y AÑADIR REPOSITORIOS
 # ------------------------------------------------------------------------------
 log_info "Añadiendo repositorios adicionales..."
