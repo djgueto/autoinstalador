@@ -640,11 +640,26 @@ log_info "Instalando y ejecutando script de picons (downloadLoT.sh)..."
 
 if [ -f /usr/script/downloadLoT.sh ]; then
     chmod +x /usr/script/downloadLoT.sh
-    /usr/script/downloadLoT.sh
-    if [ $? -eq 0 ]; then
+    
+    log_info "Ejecutando downloadLoT.sh (capturando salida)..."
+    # Ejecutamos redirigiendo salida a un log temporal para evitar que se "minimice" o limpie la pantalla
+    # y podamos ver el error si ocurre.
+    /usr/script/downloadLoT.sh > /tmp/downloadLoT.log 2>&1
+    RET_LOT=$?
+    
+    if [ $RET_LOT -eq 0 ]; then
         log_info "Picons descargados e instalados correctamente."
     else
-        log_error "Hubo un error al ejecutar downloadLoT.sh"
+        log_error "Hubo un error al ejecutar downloadLoT.sh (Código: $RET_LOT)"
+        echo "-------------------------------------------------"
+        echo "CONTENIDO DEL ERROR (Últimas 20 líneas):"
+        echo "-------------------------------------------------"
+        tail -n 20 /tmp/downloadLoT.log
+        echo "-------------------------------------------------"
+        echo "AVISO: El script ha fallado. Revisa el error arriba."
+        echo "El log completo está en: /tmp/downloadLoT.log"
+        echo "Pulsa ENTER para continuar..."
+        read dummy < /dev/tty
     fi
 else
     log_error "No se encontró /usr/script/downloadLoT.sh (¿Actualizador.ipk falló?)"
