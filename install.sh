@@ -142,8 +142,8 @@ if [ "$SERVICE_TYPE" = "5001" ] || [ "$SERVICE_TYPE" = "5002" ]; then
     log_info "Seleccionado tipo de servicio $SERVICE_TYPE. Instalando ServiceApp y reproductores..."
     
     # Actualizar feeds de nuevo para asegurar que encontramos los paquetes
-    log_info "Actualizando listas de paquetes..."
-    opkg update
+    # log_info "Actualizando listas de paquetes..."
+    # opkg update
     
     log_info "Instalando ServiceApp..."
     # Intentar instalar el plugin de sistema (nombre estándar en OpenATV y mayoría de imágenes)
