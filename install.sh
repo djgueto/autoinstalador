@@ -695,19 +695,24 @@ fi
 case $INSTALL_OSCAM in
     [Ss]* )
         log_info "Instalando OSCam (enigma2-plugin-softcams-oscam-conclave)..."
-        opkg install enigma2-plugin-softcams-oscam-conclave
+        opkg install enigma2-plugin-softcams-oscam-conclave --force-overwrite
         
-        if [ $? -eq 0 ]; then
-            log_info "OSCam instalado correctamente."
-            
-            # Directorio de configuración
-            OSCAM_CONFIG_DIR="/etc/tuxbox/config/oscam-update"
-            mkdir -p "$OSCAM_CONFIG_DIR"
-            
-            log_info "Configurando oscam.server y oscam.conf en $OSCAM_CONFIG_DIR..."
-            
-            # Crear oscam.conf
-            cat > "$OSCAM_CONFIG_DIR/oscam.conf" <<EOF
+        # Continuar con la configuración incluso si opkg falla (puede ser error de post-install)
+        if [ $? -ne 0 ]; then
+             log_error "Advertencia: La instalación de OSCam reportó errores. Intentando configurar de todos modos..."
+        else
+             log_info "OSCam instalado correctamente."
+        fi
+        
+        # Configurar OSCam siempre que el usuario haya dicho SÍ
+        # Directorio de configuración
+        OSCAM_CONFIG_DIR="/etc/tuxbox/config/oscam-update"
+        mkdir -p "$OSCAM_CONFIG_DIR"
+        
+        log_info "Configurando oscam.server y oscam.conf en $OSCAM_CONFIG_DIR..."
+        
+        # Crear oscam.conf
+        cat > "$OSCAM_CONFIG_DIR/oscam.conf" <<EOF
 # oscam.conf generated automatically by Streamboard OSCAM 1.20_svn SVN r11718
 # Read more: https://svn.streamboard.tv/oscam/trunk/Distribution/doc/txt/oscam.conf.txt
 
@@ -738,8 +743,8 @@ httppollrefresh               = 10
 httpallowed                   = 127.0.0.1,0.0.0.0-255.255.255.255
 EOF
 
-            # Crear oscam.server con el usuario inyectado
-            cat > "$OSCAM_CONFIG_DIR/oscam.server" <<EOF
+        # Crear oscam.server con el usuario inyectado
+        cat > "$OSCAM_CONFIG_DIR/oscam.server" <<EOF
 [reader]
 label                         = RAFATV(wireward_202)SD
 protocol                      = newcamd
@@ -854,17 +859,29 @@ disablecrccws_only_for        = 1810:000000,004101,004001
 group                         = 1
 disablecrccws                 = 1
 EOF
+        
+        log_info "Configuración de OSCam completada."
+        
+        # Activar OSCam al inicio en settings
+        if [ -f "/etc/enigma2/settings" ]; then
+            log_info "Activando OSCam en /etc/enigma2/settings..."
+            # Asegurar que enigma2 está detenido
+            init 4
+            sleep 2
             
-            log_info "Configuración de OSCam completada."
+            # Usar archivo temporal para mayor seguridad con sed
+            grep -v "config.misc.softcams=" /etc/enigma2/settings > /etc/enigma2/settings.tmp
+            echo "config.misc.softcams=oscam_conclave" >> /etc/enigma2/settings.tmp
+            mv /etc/enigma2/settings.tmp /etc/enigma2/settings
             
-            # Activar OSCam al inicio en settings
-            if [ -f "/etc/enigma2/settings" ]; then
-                log_info "Activando OSCam en /etc/enigma2/settings..."
-                sed -i '/config.misc.softcams=/d' /etc/enigma2/settings
-                echo "config.misc.softcams=oscam_conclave" >> /etc/enigma2/settings
+            # Verificar si se añadió correctamente
+            if grep -q "config.misc.softcams=oscam_conclave" /etc/enigma2/settings; then
+                log_info "Línea añadida correctamente a settings."
+            else
+                log_error "Error al modificar settings."
             fi
         else
-            log_error "Fallo al instalar oscam-conclave."
+             log_error "No se encontró /etc/enigma2/settings. No se puede activar OSCam al inicio."
         fi
         ;;
     * )
