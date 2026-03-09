@@ -358,9 +358,9 @@ step_9_install_oscam() {
             # Iniciar servicio
             log_info "Iniciando OSCam..."
             
-            # Asegurar permisos de ejecución
-            [ -f "/usr/bin/oscam_conclave" ] && chmod +x /usr/bin/oscam_conclave
-            [ -f "/usr/bin/oscam" ] && chmod +x /usr/bin/oscam
+            # Asegurar permisos de ejecución (usando 755 como se hace manualmente)
+            [ -f "/usr/bin/oscam_conclave" ] && chmod 755 /usr/bin/oscam_conclave
+            [ -f "/usr/bin/oscam" ] && chmod 755 /usr/bin/oscam
 
             CAM_SCRIPT=$(find /etc/init.d -name "softcam.oscam*" | head -n 1)
             STARTED=0
@@ -375,12 +375,14 @@ step_9_install_oscam() {
             fi
             
             if [ $STARTED -eq 0 ]; then
-                log_warn "Script de inicio falló o no existe. Intentando inicio manual..."
-                # Intentar forzar con config explícita
+                log_warn "Script de inicio falló o no existe. Intentando inicio manual desde /usr/bin..."
+                # Intentar forzar exactamente como funciona manualmente:
+                # cd /usr/bin/
+                # ./oscam_conclave -b
                 if [ -x "/usr/bin/oscam_conclave" ]; then
-                    /usr/bin/oscam_conclave -b -r 2 -c "$OSCAM_CONFIG_DIR" > /dev/null 2>&1
+                    (cd /usr/bin && ./oscam_conclave -b) > /dev/null 2>&1
                 elif [ -x "/usr/bin/oscam" ]; then
-                    /usr/bin/oscam -b -r 2 -c "$OSCAM_CONFIG_DIR" > /dev/null 2>&1
+                    (cd /usr/bin && ./oscam -b) > /dev/null 2>&1
                 fi
             fi
             
@@ -392,7 +394,7 @@ step_9_install_oscam() {
                 # Intento de diagnóstico
                 if [ -x "/usr/bin/oscam_conclave" ]; then
                     log_warn "Prueba de ejecución directa:"
-                    /usr/bin/oscam_conclave --help | head -n 1
+                    (cd /usr/bin && ./oscam_conclave --help | head -n 1)
                 fi
             fi
             ;;
