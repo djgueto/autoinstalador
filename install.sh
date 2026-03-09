@@ -52,10 +52,14 @@ if [ -z "$SERVICE_TYPE" ]; then
 fi
 
 echo ""
+read -p "¿Desea instalar OSCam (oscam-conclave)? (s/n): " INSTALL_OSCAM < /dev/tty
+
+echo ""
 echo "-------------------------------------------------"
 echo "Usuario: $CLIENT_USER"
 echo "Pass:    $CLIENT_PASS"
 echo "Tipo:    $SERVICE_TYPE"
+echo "OSCam:   $INSTALL_OSCAM"
 echo "-------------------------------------------------"
 echo ""
 read -p "Pulse Enter para comenzar la instalacion..." dummy < /dev/tty
@@ -187,8 +191,8 @@ if [ $? -eq 0 ]; then
     # Asegurar que el servicio está iniciado antes de unirse
     /etc/init.d/zerotier-one start > /dev/null 2>&1
     
-    log_info "Esperando 5 segundos para que inicie el servicio ZeroTier..."
-    sleep 5
+    log_info "Esperando 2 segundos para que inicie el servicio ZeroTier..."
+    sleep 2
     
     log_info "Uniéndose a la red..."
     zerotier-cli join 9f77fc393e7c3f22
@@ -685,6 +689,182 @@ else
     log_error "No se encontró /usr/script/downloadLoT.sh (¿Actualizador.ipk falló?)"
     # Si falla, podríamos intentar descargarlo si estuviera en el repo, pero como no está, solo avisamos.
 fi
+
+# ------------------------------------------------------------------------------
+# 9b. INSTALAR OSCAM (OPCIONAL)
+# ------------------------------------------------------------------------------
+case $INSTALL_OSCAM in
+    [Ss]* )
+        log_info "Instalando OSCam (oscam-conclave)..."
+        opkg install oscam-conclave
+        
+        if [ $? -eq 0 ]; then
+            log_info "OSCam instalado correctamente."
+            
+            # Directorio de configuración
+            OSCAM_CONFIG_DIR="/etc/tuxbox/config/oscam-update"
+            mkdir -p "$OSCAM_CONFIG_DIR"
+            
+            log_info "Configurando oscam.server y oscam.conf en $OSCAM_CONFIG_DIR..."
+            
+            # Crear oscam.conf
+            cat > "$OSCAM_CONFIG_DIR/oscam.conf" <<EOF
+# oscam.conf generated automatically by Streamboard OSCAM 1.20_svn SVN r11718
+# Read more: https://svn.streamboard.tv/oscam/trunk/Distribution/doc/txt/oscam.conf.txt
+
+[global]
+logfile                       = /tmp/oscam.log
+clienttimeout                 = 4000
+fallbacktimeout               = 1500
+clientmaxidle                 = 100
+nice                          = -1
+maxlogsize                    = 100
+readerrestartseconds          = 6
+disablecrccws                 = 1
+disablecrccws_only_for        = 1810:000000,004101,004001
+
+[dvbapi]
+enabled                       = 1
+au                            = 1
+pmt_mode                      = 0
+delayer                       = 50
+user                          = dvbapi
+
+[webif]
+httpport                      = 1980
+httpuser                      = root
+httppwd                       = 1980Rafael
+httprefresh                   = 10
+httppollrefresh               = 10
+httpallowed                   = 127.0.0.1,0.0.0.0-255.255.255.255
+EOF
+
+            # Crear oscam.server con el usuario inyectado
+            cat > "$OSCAM_CONFIG_DIR/oscam.server" <<EOF
+[reader]
+label                         = RAFATV(wireward_202)SD
+protocol                      = newcamd
+device                        = 10.8.0.202,34001
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 0100:004106,004108,005001
+caid                          = 0100
+group                         = 2,3
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(wireward_202)HD
+protocol                      = newcamd
+device                        = 10.8.0.202,34002
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 1810:000000,004101,004001
+group                         = 1
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(wireward_203)SD
+protocol                      = newcamd
+device                        = 10.8.0.203,35001
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 0100:004106,004108,005001
+group                         = 2,3
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(wireward_203)HD
+protocol                      = newcamd
+device                        = 10.8.0.203,35002
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 1810:000000,004101,004001
+group                         = 1
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(zerotier_202)SD
+protocol                      = newcamd
+device                        = 172.24.1.202,34001
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 0100:004106,004108,005001
+caid                          = 0100
+group                         = 2,3
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(zerotier_202)HD
+protocol                      = newcamd
+device                        = 172.24.1.202,34002
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 1810:000000,004101,004001
+group                         = 1
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(zerotier_203)SD
+protocol                      = newcamd
+device                        = 172.24.1.203,35001
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 0100:004106,004108,005001
+group                         = 2,3
+disablecrccws                 = 1
+
+[reader]
+label                         = RAFATV(zerotier_203)HD
+protocol                      = newcamd
+device                        = 172.24.1.203,35002
+key                           = 0204060810121416182022242628
+user                          = $CLIENT_USER
+password                      = Sistema0891
+inactivitytimeout             = -1
+disableserverfilter           = 1
+connectoninit                 = 1
+disablecrccws_only_for        = 1810:000000,004101,004001
+group                         = 1
+disablecrccws                 = 1
+EOF
+            
+            log_info "Configuración de OSCam completada."
+        else
+            log_error "Fallo al instalar oscam-conclave."
+        fi
+        ;;
+    * )
+        log_info "Saltando instalación de OSCam."
+        ;;
+esac
 
 # ------------------------------------------------------------------------------
 # 10. FINALIZAR
