@@ -34,12 +34,14 @@ log_error() {
 # ------------------------------------------------------------------------------
 clear
 echo "================================================="
-echo "   ASISTENTE DE INSTALACION ENIGMA2"
+echo "   ASISTENTE DE INSTALACION ENIGMA2 (v2.1 OSCam)"
 echo "================================================="
 echo ""
 
 read -p "Introduce el USUARIO: " CLIENT_USER < /dev/tty
 read -p "Introduce la CONTRASEÑA: " CLIENT_PASS < /dev/tty
+echo ""
+read -p "¿Desea instalar OSCam (oscam-conclave)? (s/n): " INSTALL_OSCAM < /dev/tty
 echo ""
 echo "Tipo de Servicio (por defecto 4097):"
 echo "  4097 - GStreamer (Estándar)"
@@ -50,9 +52,6 @@ read -p "Selecciona (Enter para 4097): " SERVICE_TYPE < /dev/tty
 if [ -z "$SERVICE_TYPE" ]; then
     SERVICE_TYPE="4097"
 fi
-
-echo ""
-read -p "¿Desea instalar OSCam (oscam-conclave)? (s/n): " INSTALL_OSCAM < /dev/tty
 
 echo ""
 echo "-------------------------------------------------"
