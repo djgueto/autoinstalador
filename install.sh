@@ -694,8 +694,8 @@ fi
 # ------------------------------------------------------------------------------
 case $INSTALL_OSCAM in
     [Ss]* )
-        log_info "Instalando OSCam (oscam-conclave)..."
-        opkg install oscam-conclave
+        log_info "Instalando OSCam (enigma2-plugin-softcams-oscam-conclave)..."
+        opkg install enigma2-plugin-softcams-oscam-conclave
         
         if [ $? -eq 0 ]; then
             log_info "OSCam instalado correctamente."
