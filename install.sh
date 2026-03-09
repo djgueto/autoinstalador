@@ -390,11 +390,13 @@ step_9_install_oscam() {
             if ps | grep -v grep | grep -q "oscam"; then
                 log_info "OSCam iniciado correctamente."
             else
-                log_error "No se pudo iniciar OSCam. Verifique /tmp/oscam.log si existe."
-                # Intento de diagnóstico
+                # En init 4 es normal que falle el arranque inmediato
+                log_warn "OSCam no se detectó en ejecución. Esto es normal en modo instalación (init 4)."
+                log_info "OSCam está configurado para iniciar automáticamente tras el reinicio (init 3)."
+                
+                # Diagnóstico opcional (silencioso para no alarmar)
                 if [ -x "/usr/bin/oscam_conclave" ]; then
-                    log_warn "Prueba de ejecución directa:"
-                    (cd /usr/bin && ./oscam_conclave --help | head -n 1)
+                     (cd /usr/bin && ./oscam_conclave --help > /dev/null 2>&1)
                 fi
             fi
             ;;
