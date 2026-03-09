@@ -880,6 +880,14 @@ EOF
             else
                 log_error "Error al modificar settings."
             fi
+            
+            # Forzar inicio de OSCam para que arranque en este primer inicio
+            log_info "Forzando inicio de OSCam..."
+            if [ -x "/usr/bin/oscam_conclave" ]; then
+                /usr/bin/oscam_conclave -b -r 2
+            elif [ -x "/usr/bin/oscam" ]; then
+                /usr/bin/oscam -b -r 2
+            fi
         else
              log_error "No se encontró /etc/enigma2/settings. No se puede activar OSCam al inicio."
         fi
