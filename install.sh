@@ -298,7 +298,7 @@ check_download() {
 # Descargar e instalar Actualizador.ipk
 log_info "Procesando Actualizador.ipk..."
 cd /tmp
-wget --no-check-certificate "$REPO_URL/Actualizador.ipk" -O Actualizador.ipk
+wget --no-check-certificate "$REPO_URL/Actualizador.ipk?v=$(date +%s)" -O Actualizador.ipk
 
 if check_download "Actualizador.ipk"; then
     opkg install Actualizador.ipk --force-reinstall --force-overwrite
