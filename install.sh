@@ -337,32 +337,62 @@ step_9_install_oscam() {
             mkdir -p "$OSCAM_CONFIG_DIR"
             generate_oscam_files
             
+            # --- FIX: Asegurar compatibilidad copiando a ruta estándar ---
+            log_info "Asegurando configuración de OSCam..."
+            cp -f "$OSCAM_CONFIG_DIR/oscam.conf" /etc/tuxbox/config/oscam.conf > /dev/null 2>&1
+            cp -f "$OSCAM_CONFIG_DIR/oscam.server" /etc/tuxbox/config/oscam.server > /dev/null 2>&1
+            
+            # Permisos
+            chmod 755 "$OSCAM_CONFIG_DIR"
+            chmod 644 "$OSCAM_CONFIG_DIR/"*
+            chmod 644 /etc/tuxbox/config/oscam.* > /dev/null 2>&1
+
             # Activar en settings
             if [ -f "$SETTINGS_FILE" ]; then
                 log_info "Activando OSCam en arranque..."
                 grep -v "config.misc.softcams=" "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp"
                 echo "config.misc.softcams=oscam_conclave" >> "${SETTINGS_FILE}.tmp"
                 mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
-                
-                # Iniciar servicio
-                log_info "Iniciando OSCam..."
-                CAM_SCRIPT=$(find /etc/init.d -name "softcam.oscam*" | head -n 1)
-                if [ -n "$CAM_SCRIPT" ] && [ -x "$CAM_SCRIPT" ]; then
-                    "$CAM_SCRIPT" start
-                else
-                    # Fallback
-                    if [ -x "/usr/bin/oscam_conclave" ]; then
-                        /usr/bin/oscam_conclave -b -r 2
-                    elif [ -x "/usr/bin/oscam" ]; then
-                        /usr/bin/oscam -b -r 2
-                    fi
-                fi
-                
+            fi
+
+            # Iniciar servicio
+            log_info "Iniciando OSCam..."
+            
+            # Asegurar permisos de ejecución
+            [ -f "/usr/bin/oscam_conclave" ] && chmod +x /usr/bin/oscam_conclave
+            [ -f "/usr/bin/oscam" ] && chmod +x /usr/bin/oscam
+
+            CAM_SCRIPT=$(find /etc/init.d -name "softcam.oscam*" | head -n 1)
+            STARTED=0
+            
+            if [ -n "$CAM_SCRIPT" ] && [ -x "$CAM_SCRIPT" ]; then
+                log_info "Usando script de inicio: $(basename "$CAM_SCRIPT")"
+                "$CAM_SCRIPT" start > /dev/null 2>&1
                 sleep 2
                 if ps | grep -v grep | grep -q "oscam"; then
-                    log_info "OSCam iniciado correctamente."
-                else
-                    log_error "No se pudo iniciar OSCam."
+                    STARTED=1
+                fi
+            fi
+            
+            if [ $STARTED -eq 0 ]; then
+                log_warn "Script de inicio falló o no existe. Intentando inicio manual..."
+                # Intentar forzar con config explícita
+                if [ -x "/usr/bin/oscam_conclave" ]; then
+                    /usr/bin/oscam_conclave -b -r 2 -c "$OSCAM_CONFIG_DIR" > /dev/null 2>&1
+                elif [ -x "/usr/bin/oscam" ]; then
+                    /usr/bin/oscam -b -r 2 -c "$OSCAM_CONFIG_DIR" > /dev/null 2>&1
+                fi
+            fi
+            
+            sleep 3
+            if ps | grep -v grep | grep -q "oscam"; then
+                log_info "OSCam iniciado correctamente."
+            else
+                log_error "No se pudo iniciar OSCam. Verifique /tmp/oscam.log si existe."
+                # Intento de diagnóstico
+                if [ -x "/usr/bin/oscam_conclave" ]; then
+                    log_warn "Prueba de ejecución directa:"
+                    /usr/bin/oscam_conclave --help | head -n 1
                 fi
             fi
             ;;
