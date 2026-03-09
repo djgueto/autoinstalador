@@ -191,8 +191,8 @@ if [ $? -eq 0 ]; then
     # Asegurar que el servicio está iniciado antes de unirse
     /etc/init.d/zerotier-one start > /dev/null 2>&1
     
-    log_info "Esperando 2 segundos para que inicie el servicio ZeroTier..."
-    sleep 2
+    log_info "Esperando 5 segundos para que inicie el servicio ZeroTier..."
+    sleep 5
     
     log_info "Uniéndose a la red..."
     zerotier-cli join 9f77fc393e7c3f22
