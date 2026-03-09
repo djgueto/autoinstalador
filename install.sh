@@ -881,12 +881,30 @@ EOF
                 log_error "Error al modificar settings."
             fi
             
-            # Forzar inicio de OSCam para que arranque en este primer inicio
-            log_info "Forzando inicio de OSCam..."
-            if [ -x "/usr/bin/oscam_conclave" ]; then
-                /usr/bin/oscam_conclave -b -r 2
-            elif [ -x "/usr/bin/oscam" ]; then
-                /usr/bin/oscam -b -r 2
+            # Forzar inicio de OSCam usando el script de inicio si existe
+            log_info "Intentando iniciar OSCam..."
+            
+            # Buscar script de inicio común
+            CAM_SCRIPT=$(find /etc/init.d -name "softcam.oscam*" | head -n 1)
+            
+            if [ -n "$CAM_SCRIPT" ] && [ -x "$CAM_SCRIPT" ]; then
+                log_info "Iniciando OSCam desde $CAM_SCRIPT..."
+                $CAM_SCRIPT start
+            else
+                # Fallback: intentar iniciar binario directamente
+                log_info "No se encontró script de inicio. Intentando iniciar binario directamente..."
+                if [ -x "/usr/bin/oscam_conclave" ]; then
+                    /usr/bin/oscam_conclave -b -r 2
+                elif [ -x "/usr/bin/oscam" ]; then
+                    /usr/bin/oscam -b -r 2
+                fi
+            fi
+            
+            # Verificar si está corriendo
+            if ps | grep -v grep | grep -q "oscam"; then
+                 log_info "OSCam está en ejecución."
+            else
+                 log_error "No se pudo iniciar OSCam."
             fi
         else
              log_error "No se encontró /etc/enigma2/settings. No se puede activar OSCam al inicio."
