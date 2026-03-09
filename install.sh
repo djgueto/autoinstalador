@@ -367,6 +367,16 @@ step_9_install_oscam() {
             
             if [ -n "$CAM_SCRIPT" ] && [ -x "$CAM_SCRIPT" ]; then
                 log_info "Usando script de inicio: $(basename "$CAM_SCRIPT")"
+                
+                # --- FIX: Forzar registro en el arranque del sistema ---
+                log_info "Registrando OSCam en el arranque (rc3.d)..."
+                if command -v update-rc.d > /dev/null 2>&1; then
+                    update-rc.d $(basename "$CAM_SCRIPT") defaults > /dev/null 2>&1
+                else
+                    # Fallback manual: enlace simbólico en runlevel 3 (estándar Enigma2)
+                    ln -sf "$CAM_SCRIPT" "/etc/rc3.d/S90$(basename "$CAM_SCRIPT")" > /dev/null 2>&1
+                fi
+                
                 "$CAM_SCRIPT" start > /dev/null 2>&1
                 sleep 2
                 if ps | grep -v grep | grep -q "oscam"; then
