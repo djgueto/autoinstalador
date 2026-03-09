@@ -856,6 +856,13 @@ disablecrccws                 = 1
 EOF
             
             log_info "Configuración de OSCam completada."
+            
+            # Activar OSCam al inicio en settings
+            if [ -f "/etc/enigma2/settings" ]; then
+                log_info "Activando OSCam en /etc/enigma2/settings..."
+                sed -i '/config.misc.softcams=/d' /etc/enigma2/settings
+                echo "config.misc.softcams=oscam_conclave" >> /etc/enigma2/settings
+            fi
         else
             log_error "Fallo al instalar oscam-conclave."
         fi
