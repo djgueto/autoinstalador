@@ -1,25 +1,33 @@
 #!/bin/sh
 
 # ==============================================================================
-# SCRIPT DE AUTO-INSTALACION ENIGMA2
+# SCRIPT DE AUTO-INSTALACION ENIGMA2 - OPTIMIZADO
 # ==============================================================================
-# Este script descarga e instala todos los componentes necesarios desde GitHub.
-# Debe ser ejecutado en el decodificador Enigma2.
-#
-# Uso: wget -O - https://raw.githubusercontent.com/USUARIO/REPO/main/install.sh | sh
+# Uso: wget -O - https://raw.githubusercontent.com/djgueto/autoinstalador/main/install.sh | sh
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# CONFIGURACION DEL REPOSITORIO (CAMBIAR ESTO ANTES DE SUBIR A GITHUB)
+# CONFIGURACION GLOBAL
 # ------------------------------------------------------------------------------
 REPO_URL="https://raw.githubusercontent.com/djgueto/autoinstalador/main"
+VERSION="v3.0 (Refactorizado)"
 
-# ------------------------------------------------------------------------------
-# COLORES Y FUNCIONES DE LOG
-# ------------------------------------------------------------------------------
+# Colores
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Archivos y Directorios
+SETTINGS_FILE="/etc/enigma2/settings"
+OSCAM_CONFIG_DIR="/etc/tuxbox/config/oscam-update"
+WG_DIR="/etc/wireguard"
+WG_CONF="$WG_DIR/wg0.conf"
+WG_INIT="/etc/init.d/wireguard"
+
+# ------------------------------------------------------------------------------
+# FUNCIONES DE UTILIDAD
+# ------------------------------------------------------------------------------
 
 log_info() {
     echo -e "${GREEN}[INFO] $1${NC}"
@@ -29,263 +37,10 @@ log_error() {
     echo -e "${RED}[ERROR] $1${NC}"
 }
 
-# ------------------------------------------------------------------------------
-# SOLICITAR DATOS AL USUARIO
-# ------------------------------------------------------------------------------
-clear
-echo "================================================="
-echo "   ASISTENTE DE INSTALACION ENIGMA2 (v2.1 OSCam)"
-echo "================================================="
-echo ""
-
-read -p "Introduce el USUARIO: " CLIENT_USER < /dev/tty
-read -p "Introduce la CONTRASEÑA: " CLIENT_PASS < /dev/tty
-echo ""
-read -p "¿Desea instalar OSCam (oscam-conclave)? (s/n): " INSTALL_OSCAM < /dev/tty
-echo ""
-echo "Tipo de Servicio (por defecto 4097):"
-echo "  4097 - GStreamer (Estándar)"
-echo "  5001 - GSTPlayer"
-echo "  5002 - ExtePlayer3"
-read -p "Selecciona (Enter para 4097): " SERVICE_TYPE < /dev/tty
-
-if [ -z "$SERVICE_TYPE" ]; then
-    SERVICE_TYPE="4097"
-fi
-
-echo ""
-echo "-------------------------------------------------"
-echo "Usuario: $CLIENT_USER"
-echo "Pass:    $CLIENT_PASS"
-echo "Tipo:    $SERVICE_TYPE"
-echo "OSCam:   $INSTALL_OSCAM"
-echo "-------------------------------------------------"
-echo ""
-read -p "Pulse Enter para comenzar la instalacion..." dummy < /dev/tty
-
-# ------------------------------------------------------------------------------
-# 0. CONFIGURACION BASICA (DNS Y HORA)
-# ------------------------------------------------------------------------------
-log_info "Configurando DNS (Google)..."
-echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > /etc/resolv.conf
-
-log_info "Intentando sincronizar hora..."
-# Intentar sincronizar hora usando varios métodos
-if command -v ntpdate > /dev/null 2>&1; then
-    ntpdate -u pool.ntp.org
-elif command -v rdate > /dev/null 2>&1; then
-    rdate -s pool.ntp.org
-else
-    # Fallback: Intentar obtener fecha de google si no hay herramientas ntp
-    # Esto es útil si el deco tiene fecha de 1970 y fallan los certificados SSL
-    log_info "Herramientas NTP no encontradas, intentando ajuste básico..."
-    CURRENT_DATE=$(wget --no-check-certificate -S --spider https://google.com 2>&1 | grep "Date:" | sed 's/  Date: //')
-    if [ -n "$CURRENT_DATE" ]; then
-        date -s "$CURRENT_DATE"
-    fi
-fi
-
-# Detener Enigma2 para liberar recursos y permitir edición segura de settings
-log_info "Deteniendo interfaz gráfica (Enigma2) para instalación segura..."
-init 4
-sleep 5
-
-# ------------------------------------------------------------------------------
-# 1. PREPARAR SISTEMA Y AÑADIR REPOSITORIOS
-# ------------------------------------------------------------------------------
-log_info "Añadiendo repositorios adicionales..."
-
-# Jungle Team Feed
-wget -O /etc/opkg/jungle-feed.conf http://tropical.jungle-team.online/script/jungle-feed.conf
-if [ $? -eq 0 ]; then
-    log_info "Repositorio Jungle Team añadido."
-else
-    log_error "Error al añadir Jungle Team."
-fi
-
-# MyNonPublic OEA Feed
-wget -O - -q http://updates.mynonpublic.com/oea/feed | bash
-if [ $? -eq 0 ]; then
-    log_info "Repositorio OEA Feed añadido."
-else
-    log_error "Error al añadir OEA Feed."
-fi
-
-# ------------------------------------------------------------------------------
-# 2. CAMBIAR CONTRASEÑA ROOT
-# ------------------------------------------------------------------------------
-log_info "Estableciendo contraseña de root..."
-echo -e "1980Rafael\n1980Rafael" | passwd root > /dev/null 2>&1
-if [ $? -eq 0 ]; then
-    log_info "Contraseña establecida correctamente."
-else
-    log_error "Fallo al cambiar la contraseña."
-fi
-
-# ------------------------------------------------------------------------------
-# 3. INSTALAR PAQUETES DE RED Y UTILIDADES
-# ------------------------------------------------------------------------------
-log_info "Actualizando lista de paquetes (opkg update)..."
-opkg update
-
-# FIX: Eliminar artkoala si existe, ya que da problemas de configuración (bucle infinito de errores)
-log_info "Limpiando paquetes conflictivos (artkoala)..."
-opkg remove --force-depends enigma2-plugin-systemplugins-artkoala > /dev/null 2>&1
-
-log_info "Instalando paquetes base..."
-opkg install wget curl
-
-log_info "Instalando herramientas de red (iptables, resolvconf, wireguard)..."
-opkg install iptables resolvconf wireguard-tools
-
-# ------------------------------------------------------------------------------
-# 3b. INSTALAR SERVICEAPP Y REPRODUCTORES (Si se seleccionó 5001/5002)
-# ------------------------------------------------------------------------------
-if [ "$SERVICE_TYPE" = "5001" ] || [ "$SERVICE_TYPE" = "5002" ]; then
-    log_info "Seleccionado tipo de servicio $SERVICE_TYPE. Instalando ServiceApp y reproductores..."
-    
-    # Actualizar feeds de nuevo para asegurar que encontramos los paquetes
-    # log_info "Actualizando listas de paquetes..."
-    # opkg update
-    
-    log_info "Instalando ServiceApp..."
-    # Intentar instalar el plugin de sistema (nombre estándar en OpenATV y mayoría de imágenes)
-    opkg install enigma2-plugin-systemplugins-serviceapp
-    if [ $? -ne 0 ]; then
-        log_error "No se pudo instalar 'enigma2-plugin-systemplugins-serviceapp'."
-        log_info "Intentando alternativa: 'enigma2-plugin-extensions-serviceapp'..."
-        opkg install enigma2-plugin-extensions-serviceapp
-        
-        if [ $? -ne 0 ]; then
-            log_error "CRITICO: No se encontró el paquete ServiceApp en los repositorios."
-            echo "---------------------------------------------------------------------"
-            echo "AVISO IMPORTANTE:"
-            echo "Para usar el modo $SERVICE_TYPE, NECESITAS tener instalado ServiceApp."
-            echo "Por favor, instálalo manualmente desde el menú de Plugins de tu imagen:"
-            echo "  Menú -> Plugins -> Descargar Plugins -> SystemPlugins -> serviceapp"
-            echo "---------------------------------------------------------------------"
-        fi
-    fi
-
-    log_info "Instalando binarios de reproductores (exteplayer3, gstplayer, ffmpeg)..."
-    opkg install exteplayer3
-    opkg install gstplayer
-    opkg install ffmpeg
-    
-    if [ $? -eq 0 ]; then
-        log_info "Reproductores externos instalados correctamente."
-    else
-        log_error "Hubo problemas instalando algunos binarios. Verifique los feeds."
-    fi
-fi
-
-# ------------------------------------------------------------------------------
-# 4. INSTALAR Y CONFIGURAR ZEROTIER
-# ------------------------------------------------------------------------------
-log_info "Instalando ZeroTier..."
-opkg install zerotier
-
-if [ $? -eq 0 ]; then
-    log_info "ZeroTier instalado. Iniciando servicio..."
-    # Asegurar que el servicio está iniciado antes de unirse
-    /etc/init.d/zerotier-one start > /dev/null 2>&1
-    
-    log_info "Esperando 5 segundos para que inicie el servicio ZeroTier..."
-    sleep 5
-    
-    log_info "Uniéndose a la red..."
-    zerotier-cli join 9f77fc393e7c3f22
-    if [ $? -eq 0 ]; then
-        log_info "Unido correctamente a la red ZeroTier."
-    else
-        log_error "Fallo al unirse a la red ZeroTier."
-    fi
-else
-    log_error "Fallo al instalar ZeroTier."
-fi
-
-# ------------------------------------------------------------------------------
-# 5. INSTALAR EPG IMPORT
-# ------------------------------------------------------------------------------
-log_info "Instalando EPG Import..."
-# Primero intentamos eliminar si existe para instalación limpia
-opkg remove enigma2-plugin-extensions-epgimport --force-depends > /dev/null 2>&1
-
-opkg install enigma2-plugin-extensions-epgimport
-if [ $? -ne 0 ]; then
-    log_error "Fallo al instalar EPG Import. Posible conflicto con dependencias (artkoala)..."
-    
-    # Intentar limpiar artkoala de nuevo, que suele dar problemas
-    opkg remove --force-depends enigma2-plugin-systemplugins-artkoala > /dev/null 2>&1
-    
-    log_info "Reintentando instalación de EPG Import forzando dependencias..."
-    opkg install enigma2-plugin-extensions-epgimport --force-depends
-fi
-
-# Configurar EPG Import
-log_info "Configurando EPG Import..."
-wget --no-check-certificate "$REPO_URL/epgimport.conf" -O /etc/enigma2/epgimport.conf
-if [ $? -eq 0 ]; then
-    log_info "Configuración EPG descargada."
-else
-    log_error "No se pudo descargar epgimport.conf del repositorio."
-fi
-
-# ------------------------------------------------------------------------------
-# 5b. CONFIGURAR SETTINGS DE ENIGMA2
-# ------------------------------------------------------------------------------
-log_info "Aplicando configuración óptima a Enigma2..."
-SETTINGS_FILE="/etc/enigma2/settings"
-
-# Función auxiliar para añadir configuración si no existe
-add_setting() {
-    local key="$1"
-    local line="$2"
-    if ! grep -q "^$key" "$SETTINGS_FILE"; then
-        echo "$line" >> "$SETTINGS_FILE"
-    fi
+log_warn() {
+    echo -e "${YELLOW}[AVISO] $1${NC}"
 }
 
-# Solo modificar si el archivo existe
-if [ -f "$SETTINGS_FILE" ]; then
-    # EPG Import Config
-    add_setting "config.plugins.epgimport.deepstandby" "config.plugins.epgimport.deepstandby=wakeup"
-    add_setting "config.plugins.epgimport.enabled" "config.plugins.epgimport.enabled=True"
-    add_setting "config.plugins.epgimport.runboot" "config.plugins.epgimport.runboot=1"
-    add_setting "config.plugins.epgimport.import_onlybouquet" "config.plugins.epgimport.import_onlybouquet=False"
-    add_setting "config.plugins.epgimport.import_onlyiptv" "config.plugins.epgimport.import_onlyiptv=False"
-    add_setting "config.plugins.epgimport.shutdown" "config.plugins.epgimport.shutdown=True"
-    add_setting "config.plugins.epgimport.wakeup" "config.plugins.epgimport.wakeup=4:30"
-    
-    # Extra EPG Import settings
-    add_setting "config.plugins.extra_epgimport.day_import.1" "config.plugins.extra_epgimport.day_import.1=False"
-    add_setting "config.plugins.extra_epgimport.day_import.3" "config.plugins.extra_epgimport.day_import.3=False"
-    add_setting "config.plugins.extra_epgimport.day_import.5" "config.plugins.extra_epgimport.day_import.5=False"
-    add_setting "config.plugins.extra_epgimport.day_import.6" "config.plugins.extra_epgimport.day_import.6=False"
-    
-    # EPG Search
-    add_setting "config.plugins.epgsearch.numorbpos" "config.plugins.epgsearch.numorbpos=0"
-    
-    # OpenWebif Security & Port
-    add_setting "config.OpenWebif.auth" "config.OpenWebif.auth=True"
-    add_setting "config.OpenWebif.port" "config.OpenWebif.port=8080"
-    
-    # Usage & Interface
-    add_setting "config.usage.numberMode" "config.usage.numberMode=1"
-    add_setting "config.usage.fbc_automatic_standby" "config.usage.fbc_automatic_standby=True"
-    add_setting "config.usage.service_icon_enable" "config.usage.service_icon_enable=True"
-    
-    log_info "Configuración de Enigma2 actualizada."
-else
-    log_error "No se encontró $SETTINGS_FILE. Saltando configuración."
-fi
-
-# ------------------------------------------------------------------------------
-# 6. INSTALAR ACTUALIZADOR Y KILLEXTEPLAYER
-# ------------------------------------------------------------------------------
-log_info "Instalando Actualizador y KillExteplayer..."
-
-# Función para verificar descarga
 check_download() {
     if [ ! -s "$1" ]; then
         log_error "El archivo $1 está vacío o no se descargó. Verifica conexión y URL."
@@ -295,74 +50,314 @@ check_download() {
     return 0
 }
 
-# Descargar e instalar Actualizador.ipk
-log_info "Procesando Actualizador.ipk..."
-cd /tmp
-wget --no-check-certificate "$REPO_URL/Actualizador.ipk?v=$(date +%s)" -O Actualizador.ipk
-
-if check_download "Actualizador.ipk"; then
-    opkg install Actualizador.ipk --force-reinstall --force-overwrite
-    if [ $? -eq 0 ]; then
-        log_info "Actualizador instalado correctamente."
-    else
-        log_error "Error al instalar Actualizador.ipk"
+add_setting() {
+    local key="$1"
+    local line="$2"
+    if [ -f "$SETTINGS_FILE" ]; then
+        if ! grep -q "^$key" "$SETTINGS_FILE"; then
+            echo "$line" >> "$SETTINGS_FILE"
+        fi
     fi
-    rm -f Actualizador.ipk
-fi
+}
 
-# Descargar e instalar enigma2-plugin-extensions-killexteplayer
-log_info "Procesando KillExteplayer..."
-KILL_SCRIPT="killexteplayer_installer.sh"
-wget --no-check-certificate "$REPO_URL/$KILL_SCRIPT" -O "$KILL_SCRIPT"
-
-if check_download "$KILL_SCRIPT"; then
-    log_info "Ejecutando instalador de KillExteplayer..."
-    chmod +x "$KILL_SCRIPT"
-    sh "$KILL_SCRIPT"
+install_package() {
+    local pkg="$1"
+    log_info "Instalando $pkg..."
+    opkg install "$pkg"
     if [ $? -eq 0 ]; then
-        log_info "KillExteplayer instalado correctamente."
+        return 0
     else
-        log_error "Fallo al instalar KillExteplayer."
+        log_warn "Fallo al instalar $pkg. Intentando forzar dependencias..."
+        opkg install "$pkg" --force-depends
+        return $?
     fi
-    rm -f "$KILL_SCRIPT"
-fi
+}
 
-# Volver al directorio original (aunque no es estrictamente necesario en este script)
-cd - > /dev/null
+remove_package() {
+    local pkg="$1"
+    log_info "Eliminando $pkg..."
+    opkg remove "$pkg" --force-depends > /dev/null 2>&1
+}
 
 # ------------------------------------------------------------------------------
-# 7. CONFIGURAR WIREGUARD
+# FUNCIONES DE CONFIGURACION DE SISTEMA
 # ------------------------------------------------------------------------------
-log_info "Configurando WireGuard..."
 
-# Preguntar siempre, pero permitir saltar con Enter vacío si se desea (opcional)
-# El usuario indicó que NO le preguntaba, así que forzamos la pregunta claramente.
-while true; do
-    read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG < /dev/tty
-    case $CONFIGURE_WG in
-        [Ss]* ) 
-            mkdir -p /etc/wireguard
-            
-            # Solicitar datos al usuario
-            echo "-------------------------------------------------"
-            echo "   CONFIGURACION DE WIREGUARD"
-            echo "-------------------------------------------------"
-            echo "Por favor, PEGA el contenido completo de tu archivo wg0.conf"
-            echo "Cuando termines de pegar, pulsa ENTER y luego Ctrl+D (EOF)."
-            echo "-------------------------------------------------"
-            
-            # Crear archivo de configuración leyendo desde stdin
-            # Usamos /dev/tty para asegurar que lee del usuario y no del script pipeado
-            cat > /etc/wireguard/wg0.conf < /dev/tty
+step_0_init_system() {
+    clear
+    echo "================================================="
+    echo "   ASISTENTE DE INSTALACION ENIGMA2 $VERSION"
+    echo "================================================="
+    echo ""
 
-            log_info "Archivo wg0.conf guardado en /etc/wireguard/"
+    # Solicitar datos
+    read -p "Introduce el USUARIO: " CLIENT_USER < /dev/tty
+    read -p "Introduce la CONTRASEÑA: " CLIENT_PASS < /dev/tty
+    echo ""
+    read -p "¿Desea instalar OSCam (oscam-conclave)? (s/n): " INSTALL_OSCAM < /dev/tty
+    echo ""
+    echo "Tipo de Servicio (por defecto 4097):"
+    echo "  4097 - GStreamer (Estándar)"
+    echo "  5001 - GSTPlayer"
+    echo "  5002 - ExtePlayer3"
+    read -p "Selecciona (Enter para 4097): " SERVICE_TYPE < /dev/tty
+
+    [ -z "$SERVICE_TYPE" ] && SERVICE_TYPE="4097"
+
+    echo ""
+    echo "-------------------------------------------------"
+    echo "Usuario: $CLIENT_USER"
+    echo "Pass:    $CLIENT_PASS"
+    echo "Tipo:    $SERVICE_TYPE"
+    echo "OSCam:   $INSTALL_OSCAM"
+    echo "-------------------------------------------------"
+    echo ""
+    read -p "Pulse Enter para comenzar la instalacion..." dummy < /dev/tty
+
+    # Configuración básica
+    log_info "Configurando DNS (Google)..."
+    echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > /etc/resolv.conf
+
+    log_info "Sincronizando hora..."
+    if command -v ntpdate > /dev/null 2>&1; then
+        ntpdate -u pool.ntp.org
+    elif command -v rdate > /dev/null 2>&1; then
+        rdate -s pool.ntp.org
+    else
+        log_warn "Herramientas NTP no encontradas, intentando ajuste vía HTTP..."
+        CURRENT_DATE=$(wget --no-check-certificate -S --spider https://google.com 2>&1 | grep "Date:" | sed 's/  Date: //')
+        [ -n "$CURRENT_DATE" ] && date -s "$CURRENT_DATE"
+    fi
+
+    log_info "Deteniendo Enigma2 (init 4)..."
+    init 4
+    sleep 5
+}
+
+step_1_repos_and_update() {
+    log_info "Añadiendo repositorios adicionales..."
+    wget -O /etc/opkg/jungle-feed.conf http://tropical.jungle-team.online/script/jungle-feed.conf
+    wget -O - -q http://updates.mynonpublic.com/oea/feed | bash
+
+    log_info "Estableciendo contraseña root..."
+    echo -e "1980Rafael\n1980Rafael" | passwd root > /dev/null 2>&1
+
+    log_info "Actualizando paquetes..."
+    opkg update
+    
+    # Limpieza preventiva
+    remove_package "enigma2-plugin-systemplugins-artkoala"
+}
+
+step_2_install_base_packages() {
+    log_info "Instalando paquetes base y herramientas de red..."
+    opkg install wget curl iptables resolvconf wireguard-tools
+
+    if [ "$SERVICE_TYPE" = "5001" ] || [ "$SERVICE_TYPE" = "5002" ]; then
+        log_info "Instalando ServiceApp y reproductores..."
+        if ! install_package "enigma2-plugin-systemplugins-serviceapp"; then
+            install_package "enigma2-plugin-extensions-serviceapp"
+        fi
+        opkg install exteplayer3 gstplayer ffmpeg
+    fi
+}
+
+step_3_install_zerotier() {
+    log_info "Instalando ZeroTier..."
+    if install_package "zerotier"; then
+        log_info "Iniciando ZeroTier..."
+        /etc/init.d/zerotier-one start > /dev/null 2>&1
+        sleep 5 # Espera de seguridad
+        log_info "Uniéndose a la red..."
+        zerotier-cli join 9f77fc393e7c3f22
+    else
+        log_error "Fallo crítico instalando ZeroTier."
+    fi
+}
+
+step_4_install_epg() {
+    log_info "Instalando EPG Import..."
+    remove_package "enigma2-plugin-extensions-epgimport"
+    install_package "enigma2-plugin-extensions-epgimport"
+
+    log_info "Descargando configuración EPG..."
+    wget --no-check-certificate "$REPO_URL/epgimport.conf" -O /etc/enigma2/epgimport.conf
+}
+
+step_5_configure_enigma2() {
+    log_info "Optimizando configuración de Enigma2..."
+    if [ -f "$SETTINGS_FILE" ]; then
+        # EPG Import
+        add_setting "config.plugins.epgimport.deepstandby" "config.plugins.epgimport.deepstandby=wakeup"
+        add_setting "config.plugins.epgimport.enabled" "config.plugins.epgimport.enabled=True"
+        add_setting "config.plugins.epgimport.runboot" "config.plugins.epgimport.runboot=1"
+        add_setting "config.plugins.epgimport.import_onlybouquet" "config.plugins.epgimport.import_onlybouquet=False"
+        add_setting "config.plugins.epgimport.import_onlyiptv" "config.plugins.epgimport.import_onlyiptv=False"
+        add_setting "config.plugins.epgimport.shutdown" "config.plugins.epgimport.shutdown=True"
+        add_setting "config.plugins.epgimport.wakeup" "config.plugins.epgimport.wakeup=4:30"
+        
+        # OpenWebif
+        add_setting "config.OpenWebif.auth" "config.OpenWebif.auth=True"
+        add_setting "config.OpenWebif.port" "config.OpenWebif.port=8080"
+        
+        # General
+        add_setting "config.usage.numberMode" "config.usage.numberMode=1"
+        add_setting "config.usage.fbc_automatic_standby" "config.usage.fbc_automatic_standby=True"
+        add_setting "config.usage.service_icon_enable" "config.usage.service_icon_enable=True"
+        
+        log_info "Settings actualizados."
+    else
+        log_error "No se encontró $SETTINGS_FILE."
+    fi
+}
+
+step_6_install_plugins() {
+    log_info "Instalando Plugins adicionales..."
+    cd /tmp
+
+    # Actualizador
+    wget --no-check-certificate "$REPO_URL/Actualizador.ipk?v=$(date +%s)" -O Actualizador.ipk
+    if check_download "Actualizador.ipk"; then
+        opkg install Actualizador.ipk --force-reinstall --force-overwrite
+        rm -f Actualizador.ipk
+    fi
+
+    # KillExteplayer
+    local KILL_SCRIPT="killexteplayer_installer.sh"
+    wget --no-check-certificate "$REPO_URL/$KILL_SCRIPT" -O "$KILL_SCRIPT"
+    if check_download "$KILL_SCRIPT"; then
+        sh "$KILL_SCRIPT"
+        rm -f "$KILL_SCRIPT"
+    fi
+    cd - > /dev/null
+}
+
+step_7_configure_wireguard() {
+    while true; do
+        read -p "¿Desea configurar WireGuard ahora? (s/n): " CONFIGURE_WG < /dev/tty
+        case $CONFIGURE_WG in
+            [Ss]* )
+                mkdir -p "$WG_DIR"
+                echo "-------------------------------------------------"
+                echo "   CONFIGURACION DE WIREGUARD"
+                echo "-------------------------------------------------"
+                echo "Por favor, PEGA el contenido de wg0.conf y pulsa ENTER + Ctrl+D (EOF)."
+                cat > "$WG_CONF" < /dev/tty
+
+                if [ -s "$WG_CONF" ]; then
+                    log_info "Generando script de inicio WireGuard..."
+                    create_wireguard_init_script
+                    
+                    chmod +x "$WG_INIT"
+                    # Enlaces simbólicos
+                    ln -sf "$WG_INIT" /etc/rc0.d/K70wireguard
+                    ln -sf "$WG_INIT" /etc/rc1.d/K70wireguard
+                    ln -sf "$WG_INIT" /etc/rc2.d/S10wireguard
+                    ln -sf "$WG_INIT" /etc/rc3.d/S10wireguard
+                    ln -sf "$WG_INIT" /etc/rc4.d/S10wireguard
+                    ln -sf "$WG_INIT" /etc/rc5.d/S10wireguard
+                    ln -sf "$WG_INIT" /etc/rc6.d/K70wireguard
+                    
+                    update-rc.d wireguard defaults > /dev/null 2>&1
+                    "$WG_INIT" start
+                else
+                    log_error "Archivo wg0.conf vacío."
+                fi
+                break
+                ;;
+            [Nn]* ) break ;;
+            * ) echo "Responde 's' o 'n'." ;;
+        esac
+    done
+}
+
+step_8_install_scripts() {
+    log_info "Instalando scripts de canales y picons..."
+    mkdir -p /usr/script
+
+    # downloadLdC.sh
+    wget --no-check-certificate "$REPO_URL/downloadLdC.sh" -O /usr/script/downloadLdC.sh
+    if [ -f /usr/script/downloadLdC.sh ]; then
+        sed -i "s|CLIENT_USER=\"\"|CLIENT_USER=\"$CLIENT_USER\"|g" /usr/script/downloadLdC.sh
+        sed -i "s|CLIENT_PASS=\"\"|CLIENT_PASS=\"$CLIENT_PASS\"|g" /usr/script/downloadLdC.sh
+        sed -i "s|SERVICE_TYPE=\"\"|SERVICE_TYPE=\"$SERVICE_TYPE\"|g" /usr/script/downloadLdC.sh
+        chmod +x /usr/script/downloadLdC.sh
+        /usr/script/downloadLdC.sh
+    fi
+
+    # downloadLoT.sh
+    # Se asume instalado por Actualizador.ipk, pero verificamos ejecución
+    if [ -f /usr/script/downloadLoT.sh ]; then
+        chmod +x /usr/script/downloadLoT.sh
+        while true; do
+            log_info "Ejecutando descarga de picons..."
+            /usr/script/downloadLoT.sh > /tmp/downloadLoT.log 2>&1
+            if [ $? -eq 0 ]; then
+                log_info "Picons instalados correctamente."
+                break
+            else
+                log_error "Error en picons. Ver /tmp/downloadLoT.log"
+                tail -n 20 /tmp/downloadLoT.log
+                read -p "¿Reintentar? (s/n): " RETRY < /dev/tty
+                [[ "$RETRY" != [Ss]* ]] && break
+            fi
+        done
+    fi
+}
+
+step_9_install_oscam() {
+    case $INSTALL_OSCAM in
+        [Ss]* )
+            log_info "Instalando OSCam..."
+            opkg install enigma2-plugin-softcams-oscam-conclave --force-overwrite
             
-            # Verificar si el archivo se creó y tiene contenido
-            if [ -s /etc/wireguard/wg0.conf ]; then
-                log_info "Configurando script de inicio y monitoreo de WireGuard..."
+            mkdir -p "$OSCAM_CONFIG_DIR"
+            generate_oscam_files
+            
+            # Activar en settings
+            if [ -f "$SETTINGS_FILE" ]; then
+                log_info "Activando OSCam en arranque..."
+                grep -v "config.misc.softcams=" "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp"
+                echo "config.misc.softcams=oscam_conclave" >> "${SETTINGS_FILE}.tmp"
+                mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
                 
-                # Crear script de inicio /etc/init.d/wireguard
-                cat > /etc/init.d/wireguard << 'EOF'
+                # Iniciar servicio
+                log_info "Iniciando OSCam..."
+                CAM_SCRIPT=$(find /etc/init.d -name "softcam.oscam*" | head -n 1)
+                if [ -n "$CAM_SCRIPT" ] && [ -x "$CAM_SCRIPT" ]; then
+                    "$CAM_SCRIPT" start
+                else
+                    # Fallback
+                    if [ -x "/usr/bin/oscam_conclave" ]; then
+                        /usr/bin/oscam_conclave -b -r 2
+                    elif [ -x "/usr/bin/oscam" ]; then
+                        /usr/bin/oscam -b -r 2
+                    fi
+                fi
+                
+                sleep 2
+                if ps | grep -v grep | grep -q "oscam"; then
+                    log_info "OSCam iniciado correctamente."
+                else
+                    log_error "No se pudo iniciar OSCam."
+                fi
+            fi
+            ;;
+    esac
+}
+
+step_10_finalize() {
+    log_info "Instalación completada. Reiniciando en 5 segundos..."
+    sleep 5
+    reboot
+}
+
+# ------------------------------------------------------------------------------
+# GENERADORES DE ARCHIVOS (Heredocs)
+# ------------------------------------------------------------------------------
+
+create_wireguard_init_script() {
+    cat > "$WG_INIT" << 'EOF'
 #!/bin/sh
 ### BEGIN INIT INFO
 # Provides:          wireguard
@@ -370,7 +365,7 @@ while true; do
 # Required-Stop:     $network $remote_fs
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: WireGuard VPN multi-interface para Enigma2
+# Short-Description: WireGuard VPN multi-interface
 ### END INIT INFO
 
 DAEMON="/usr/bin/wg-quick"
@@ -383,8 +378,6 @@ CHECK_INTERVAL=60
 BOOT_WAIT=15
 
 test -x "$DAEMON" || exit 0
-
-# ── Utilidades ────────────────────────────────────────────────────────────────
 
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOGFILE"
@@ -407,7 +400,6 @@ wait_for_network() {
         sleep 1
         TRIES=$((TRIES + 1))
     done
-    log_message "ADVERTENCIA: Red no confirmada tras ${MAX_TRIES}s, intentando de todas formas"
     return 1
 }
 
@@ -416,47 +408,28 @@ is_interface_up() {
 }
 
 bring_up() {
-    local IFACE=$1
-    "$DAEMON" down "$IFACE" > /dev/null 2>&1
+    "$DAEMON" down "$1" > /dev/null 2>&1
     sleep 2
-    "$DAEMON" up "$IFACE" > /dev/null 2>&1
+    "$DAEMON" up "$1" > /dev/null 2>&1
 }
-
-# ── Monitor por interfaz ──────────────────────────────────────────────────────
 
 check_and_reconnect() {
     local INTERFACE=$1
-    local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
-
     log_message "Monitor arrancado para $INTERFACE (PID: $$)"
-
     while true; do
         sleep "$CHECK_INTERVAL"
-
         if ! is_interface_up "$INTERFACE"; then
             log_message "[$INTERFACE] Interfaz caida, reconectando..."
             bring_up "$INTERFACE"
-            if is_interface_up "$INTERFACE"; then
-                log_message "[$INTERFACE] Reconexion OK"
-            else
-                log_message "[$INTERFACE] ERROR al reconectar"
-            fi
         else
             if command -v wg > /dev/null 2>&1; then
                 local LAST_HS
                 LAST_HS=$(wg show "$INTERFACE" latest-handshakes 2>/dev/null | awk 'NR==1{print $2}')
                 if [ -n "$LAST_HS" ] && [ "$LAST_HS" -gt 0 ] 2>/dev/null; then
-                    local CURRENT DIFF
-                    CURRENT=$(date +%s)
-                    DIFF=$((CURRENT - LAST_HS))
+                    local DIFF=$(( $(date +%s) - LAST_HS ))
                     if [ "$DIFF" -gt "$HANDSHAKE_TIMEOUT" ]; then
                         log_message "[$INTERFACE] Sin handshake hace ${DIFF}s, reconectando..."
                         bring_up "$INTERFACE"
-                        if is_interface_up "$INTERFACE"; then
-                            log_message "[$INTERFACE] Reconexion por handshake OK"
-                        else
-                            log_message "[$INTERFACE] ERROR reconexion por handshake"
-                        fi
                     fi
                 fi
             fi
@@ -464,258 +437,45 @@ check_and_reconnect() {
     done
 }
 
-# ── Acciones principales ──────────────────────────────────────────────────────
-
 start_wireguard() {
     log_message "=== Iniciando WireGuard ==="
-    echo "Esperando a que la red este disponible..."
     sleep "$BOOT_WAIT"
     wait_for_network
-
     for INTERFACE in $INTERFACES; do
         local CONF="/etc/wireguard/${INTERFACE}.conf"
-        if [ ! -f "$CONF" ]; then
-            log_message "[$INTERFACE] No existe $CONF, omitiendo"
-            continue
-        fi
-
+        [ ! -f "$CONF" ] && continue
+        
         local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
-
-        if [ -f "$PIDFILE" ]; then
-            kill "$(cat "$PIDFILE")" > /dev/null 2>&1
-            rm -f "$PIDFILE"
-        fi
-
-        echo "Iniciando $INTERFACE..."
+        [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" > /dev/null 2>&1 && rm -f "$PIDFILE"
+        
         "$DAEMON" up "$INTERFACE" 2>> "$LOGFILE"
-
-        if is_interface_up "$INTERFACE"; then
-            log_message "[$INTERFACE] Interfaz activa"
-        else
-            log_message "[$INTERFACE] ERROR al iniciar, reintentando..."
-            sleep 3
-            "$DAEMON" up "$INTERFACE" 2>> "$LOGFILE"
-        fi
-
         check_and_reconnect "$INTERFACE" &
         echo $! > "$PIDFILE"
-        log_message "[$INTERFACE] Monitor iniciado (PID: $!)"
     done
 }
 
 stop_wireguard() {
     log_message "=== Deteniendo WireGuard ==="
     for INTERFACE in $INTERFACES; do
-        echo "Deteniendo $INTERFACE..."
         local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
-
-        if [ -f "$PIDFILE" ]; then
-            kill "$(cat "$PIDFILE")" > /dev/null 2>&1
-            rm -f "$PIDFILE"
-            log_message "[$INTERFACE] Monitor detenido"
-        fi
-
+        [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" > /dev/null 2>&1 && rm -f "$PIDFILE"
         "$DAEMON" down "$INTERFACE" > /dev/null 2>&1
-        log_message "[$INTERFACE] Interfaz bajada"
     done
 }
-
-status_wireguard() {
-    for INTERFACE in $INTERFACES; do
-        if [ ! -f "/etc/wireguard/${INTERFACE}.conf" ]; then
-            continue
-        fi
-
-        if is_interface_up "$INTERFACE"; then
-            echo "Interfaz $INTERFACE : ACTIVA"
-            if command -v wg > /dev/null 2>&1; then
-                local LAST_HS
-                LAST_HS=$(wg show "$INTERFACE" latest-handshakes 2>/dev/null | awk 'NR==1{print $2}')
-                if [ -n "$LAST_HS" ] && [ "$LAST_HS" -gt 0 ] 2>/dev/null; then
-                    local DIFF=$(( $(date +%s) - LAST_HS ))
-                    echo "  Ultimo handshake: hace ${DIFF}s"
-                fi
-            fi
-        else
-            echo "Interfaz $INTERFACE : CAIDA"
-        fi
-
-        local PIDFILE="${PIDFILE_BASE}_${INTERFACE}.pid"
-        if [ -f "$PIDFILE" ]; then
-            local PID
-            PID=$(cat "$PIDFILE")
-            if kill -0 "$PID" 2>/dev/null; then
-                echo "  Monitor : ACTIVO (PID: $PID)"
-            else
-                echo "  Monitor : MUERTO (PID huerfano: $PID)"
-            fi
-        else
-            echo "  Monitor : NO INICIADO"
-        fi
-    done
-
-    echo ""
-    echo "--- Ultimos logs ---"
-    tail -20 "$LOGFILE" 2>/dev/null || echo "Sin logs"
-}
-
-# ── Dispatcher ────────────────────────────────────────────────────────────────
 
 case "$1" in
     start)   start_wireguard ;;
     stop)    stop_wireguard ;;
     restart) stop_wireguard; sleep 2; start_wireguard ;;
-    status)  status_wireguard ;;
-    *)
-        echo "Uso: /etc/init.d/wireguard {start|stop|restart|status}"
-        exit 1
-        ;;
+    *)       exit 1 ;;
 esac
-
 exit 0
 EOF
+}
 
-                # Dar permisos de ejecución
-                chmod +x /etc/init.d/wireguard
-
-                # Configurar inicio automático (symlinks manuales para asegurar compatibilidad)
-                log_info "Configurando inicio automático..."
-                ln -sf /etc/init.d/wireguard /etc/rc0.d/K70wireguard
-                ln -sf /etc/init.d/wireguard /etc/rc1.d/K70wireguard
-                ln -sf /etc/init.d/wireguard /etc/rc2.d/S10wireguard
-                ln -sf /etc/init.d/wireguard /etc/rc3.d/S10wireguard
-                ln -sf /etc/init.d/wireguard /etc/rc4.d/S10wireguard
-                ln -sf /etc/init.d/wireguard /etc/rc5.d/S10wireguard
-                ln -sf /etc/init.d/wireguard /etc/rc6.d/K70wireguard
-
-                # Intentar también update-rc.d por si acaso
-                update-rc.d wireguard defaults > /dev/null 2>&1
-
-                # Iniciar servicio
-                log_info "Iniciando servicio WireGuard..."
-                /etc/init.d/wireguard start
-
-            else
-                log_error "El archivo de configuración está vacío. No se ha configurado WireGuard."
-            fi
-            break
-            ;;
-        [Nn]* ) 
-            log_info "Saltando configuración de WireGuard."
-            break
-            ;;
-        * ) echo "Por favor, responde 's' para sí o 'n' para no.";;
-    esac
-done
-
-# ------------------------------------------------------------------------------
-# 8. CONFIGURAR SCRIPT DE CANALES (downloadLdC.sh)
-# ------------------------------------------------------------------------------
-log_info "Instalando script de actualización de canales..."
-
-# Asegurar directorio
-mkdir -p /usr/script
-
-# Descargar script
-wget --no-check-certificate "$REPO_URL/downloadLdC.sh" -O /usr/script/downloadLdC.sh
-
-if [ -f /usr/script/downloadLdC.sh ]; then
-    # Personalizar script con los datos introducidos
-    sed -i "s|CLIENT_USER=\"\"|CLIENT_USER=\"$CLIENT_USER\"|g" /usr/script/downloadLdC.sh
-    sed -i "s|CLIENT_PASS=\"\"|CLIENT_PASS=\"$CLIENT_PASS\"|g" /usr/script/downloadLdC.sh
-    sed -i "s|SERVICE_TYPE=\"\"|SERVICE_TYPE=\"$SERVICE_TYPE\"|g" /usr/script/downloadLdC.sh
-    
-    chmod +x /usr/script/downloadLdC.sh
-    log_info "Script downloadLdC.sh instalado y configurado."
-    
-    # Ejecutar por primera vez
-    log_info "Ejecutando actualización de canales..."
-    /usr/script/downloadLdC.sh
-else
-    log_error "No se pudo descargar downloadLdC.sh"
-fi
-
-# ------------------------------------------------------------------------------
-# 9. EJECUTAR SCRIPT DE PICONS (downloadLoT.sh)
-# ------------------------------------------------------------------------------
-log_info "Instalando y ejecutando script de picons (downloadLoT.sh)..."
-
-# Pre-crear directorio de picons por si acaso y asegurar permisos
-mkdir -p /usr/share/enigma2/picon
-chmod 755 /usr/share/enigma2/picon
-
-# NOTA: Este script es instalado automáticamente por Actualizador.ipk en /usr/script/
-# No es necesario descargarlo de GitHub si el IPK funcionó correctamente.
-
-if [ -f /usr/script/downloadLoT.sh ]; then
-    chmod +x /usr/script/downloadLoT.sh
-    
-    while true; do
-        log_info "Ejecutando downloadLoT.sh (capturando salida)..."
-        # Ejecutamos redirigiendo salida a un log temporal para evitar que se "minimice" o limpie la pantalla
-        # y podamos ver el error si ocurre.
-        /usr/script/downloadLoT.sh > /tmp/downloadLoT.log 2>&1
-        RET_LOT=$?
-        
-        if [ $RET_LOT -eq 0 ]; then
-            log_info "Picons descargados e instalados correctamente."
-            break
-        else
-            log_error "Hubo un error al ejecutar downloadLoT.sh (Código: $RET_LOT)"
-            echo "-------------------------------------------------"
-            echo "CONTENIDO DEL ERROR (Últimas 20 líneas):"
-            echo "-------------------------------------------------"
-            tail -n 20 /tmp/downloadLoT.log
-            echo "-------------------------------------------------"
-            echo "AVISO: El script ha fallado. Revisa el error arriba."
-            echo "El log completo está en: /tmp/downloadLoT.log"
-            
-            echo ""
-            read -p "¿Desea reintentar la descarga de picons? (s/n): " RETRY_PICONS < /dev/tty
-            case $RETRY_PICONS in
-                [Ss]* ) 
-                    log_info "Reintentando..."
-                    continue 
-                    ;;
-                * ) 
-                    log_error "Saltando instalación de picons. Puede intentarlo manualmente luego ejecutando: /usr/script/downloadLoT.sh"
-                    break 
-                    ;;
-            esac
-        fi
-    done
-else
-    log_error "No se encontró /usr/script/downloadLoT.sh (¿Actualizador.ipk falló?)"
-    # Si falla, podríamos intentar descargarlo si estuviera en el repo, pero como no está, solo avisamos.
-fi
-
-# ------------------------------------------------------------------------------
-# 9b. INSTALAR OSCAM (OPCIONAL)
-# ------------------------------------------------------------------------------
-case $INSTALL_OSCAM in
-    [Ss]* )
-        log_info "Instalando OSCam (enigma2-plugin-softcams-oscam-conclave)..."
-        opkg install enigma2-plugin-softcams-oscam-conclave --force-overwrite
-        
-        # Continuar con la configuración incluso si opkg falla (puede ser error de post-install)
-        if [ $? -ne 0 ]; then
-             log_error "Advertencia: La instalación de OSCam reportó errores. Intentando configurar de todos modos..."
-        else
-             log_info "OSCam instalado correctamente."
-        fi
-        
-        # Configurar OSCam siempre que el usuario haya dicho SÍ
-        # Directorio de configuración
-        OSCAM_CONFIG_DIR="/etc/tuxbox/config/oscam-update"
-        mkdir -p "$OSCAM_CONFIG_DIR"
-        
-        log_info "Configurando oscam.server y oscam.conf en $OSCAM_CONFIG_DIR..."
-        
-        # Crear oscam.conf
-        cat > "$OSCAM_CONFIG_DIR/oscam.conf" <<EOF
-# oscam.conf generated automatically by Streamboard OSCAM 1.20_svn SVN r11718
-# Read more: https://svn.streamboard.tv/oscam/trunk/Distribution/doc/txt/oscam.conf.txt
-
+generate_oscam_files() {
+    cat > "$OSCAM_CONFIG_DIR/oscam.conf" <<EOF
+# oscam.conf generated automatically
 [global]
 logfile                       = /tmp/oscam.log
 clienttimeout                 = 4000
@@ -743,8 +503,7 @@ httppollrefresh               = 10
 httpallowed                   = 127.0.0.1,0.0.0.0-255.255.255.255
 EOF
 
-        # Crear oscam.server con el usuario inyectado
-        cat > "$OSCAM_CONFIG_DIR/oscam.server" <<EOF
+    cat > "$OSCAM_CONFIG_DIR/oscam.server" <<EOF
 [reader]
 label                         = RAFATV(wireward_202)SD
 protocol                      = newcamd
@@ -859,65 +618,25 @@ disablecrccws_only_for        = 1810:000000,004101,004001
 group                         = 1
 disablecrccws                 = 1
 EOF
-        
-        log_info "Configuración de OSCam completada."
-        
-        # Activar OSCam al inicio en settings
-        if [ -f "/etc/enigma2/settings" ]; then
-            log_info "Activando OSCam en /etc/enigma2/settings..."
-            # Asegurar que enigma2 está detenido
-            init 4
-            sleep 2
-            
-            # Usar archivo temporal para mayor seguridad con sed
-            grep -v "config.misc.softcams=" /etc/enigma2/settings > /etc/enigma2/settings.tmp
-            echo "config.misc.softcams=oscam_conclave" >> /etc/enigma2/settings.tmp
-            mv /etc/enigma2/settings.tmp /etc/enigma2/settings
-            
-            # Verificar si se añadió correctamente
-            if grep -q "config.misc.softcams=oscam_conclave" /etc/enigma2/settings; then
-                log_info "Línea añadida correctamente a settings."
-            else
-                log_error "Error al modificar settings."
-            fi
-            
-            # Forzar inicio de OSCam usando el script de inicio si existe
-            log_info "Intentando iniciar OSCam..."
-            
-            # Buscar script de inicio común
-            CAM_SCRIPT=$(find /etc/init.d -name "softcam.oscam*" | head -n 1)
-            
-            if [ -n "$CAM_SCRIPT" ] && [ -x "$CAM_SCRIPT" ]; then
-                log_info "Iniciando OSCam desde $CAM_SCRIPT..."
-                $CAM_SCRIPT start
-            else
-                # Fallback: intentar iniciar binario directamente
-                log_info "No se encontró script de inicio. Intentando iniciar binario directamente..."
-                if [ -x "/usr/bin/oscam_conclave" ]; then
-                    /usr/bin/oscam_conclave -b -r 2
-                elif [ -x "/usr/bin/oscam" ]; then
-                    /usr/bin/oscam -b -r 2
-                fi
-            fi
-            
-            # Verificar si está corriendo
-            if ps | grep -v grep | grep -q "oscam"; then
-                 log_info "OSCam está en ejecución."
-            else
-                 log_error "No se pudo iniciar OSCam."
-            fi
-        else
-             log_error "No se encontró /etc/enigma2/settings. No se puede activar OSCam al inicio."
-        fi
-        ;;
-    * )
-        log_info "Saltando instalación de OSCam."
-        ;;
-esac
+}
 
 # ------------------------------------------------------------------------------
-# 10. FINALIZAR
+# EJECUCION PRINCIPAL
 # ------------------------------------------------------------------------------
-log_info "Instalación completada. El sistema se reiniciará en 5 segundos."
-sleep 5
-reboot
+
+main() {
+    step_0_init_system
+    step_1_repos_and_update
+    step_2_install_base_packages
+    step_3_install_zerotier
+    step_4_install_epg
+    step_5_configure_enigma2
+    step_6_install_plugins
+    step_7_configure_wireguard
+    step_8_install_scripts
+    step_9_install_oscam
+    step_10_finalize
+}
+
+# Iniciar
+main
