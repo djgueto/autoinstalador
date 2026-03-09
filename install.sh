@@ -119,14 +119,37 @@ step_0_init_system() {
     echo -e "nameserver 8.8.8.8\nnameserver 8.8.4.4" > /etc/resolv.conf
 
     log_info "Sincronizando hora..."
+    SYNC_OK=0
+
+    # 1. Intentar ntpdate
     if command -v ntpdate > /dev/null 2>&1; then
-        ntpdate -u pool.ntp.org
-    elif command -v rdate > /dev/null 2>&1; then
-        rdate -s pool.ntp.org
-    else
-        log_warn "Herramientas NTP no encontradas, intentando ajuste vía HTTP..."
+        if ntpdate -u pool.ntp.org > /dev/null 2>&1; then
+            SYNC_OK=1
+            log_info "Hora sincronizada con ntpdate."
+        fi
+    fi
+
+    # 2. Intentar rdate si ntpdate falló
+    if [ $SYNC_OK -eq 0 ] && command -v rdate > /dev/null 2>&1; then
+        if rdate -s pool.ntp.org > /dev/null 2>&1; then
+            SYNC_OK=1
+            log_info "Hora sincronizada con rdate (pool.ntp.org)."
+        elif rdate -s time.nist.gov > /dev/null 2>&1; then
+            SYNC_OK=1
+            log_info "Hora sincronizada con rdate (time.nist.gov)."
+        fi
+    fi
+
+    # 3. Fallback HTTP (Google) si todo lo anterior falló
+    if [ $SYNC_OK -eq 0 ]; then
+        log_warn "Métodos NTP fallaron. Intentando ajuste vía HTTP..."
         CURRENT_DATE=$(wget --no-check-certificate -S --spider https://google.com 2>&1 | grep "Date:" | sed 's/  Date: //')
-        [ -n "$CURRENT_DATE" ] && date -s "$CURRENT_DATE"
+        if [ -n "$CURRENT_DATE" ]; then
+            date -s "$CURRENT_DATE"
+            log_info "Hora actualizada vía HTTP: $CURRENT_DATE"
+        else
+            log_error "No se pudo sincronizar la hora. Posibles errores SSL futuros."
+        fi
     fi
 
     log_info "Deteniendo Enigma2 (init 4)..."
