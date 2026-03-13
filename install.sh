@@ -441,7 +441,7 @@ create_wireguard_init_script() {
 ### END INIT INFO
 
 DAEMON="/usr/bin/wg-quick"
-INTERFACES="wg0 wg1"
+INTERFACES=$(ls /etc/wireguard/*.conf 2>/dev/null | xargs -I{} basename {} .conf | tr '\n' ' ')
 PIDFILE_BASE="/var/run/wireguard_monitor"
 LOGFILE="/tmp/wireguard-monitor.log"
 MAX_LOG_LINES=200
