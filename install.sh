@@ -25,6 +25,9 @@ WG_DIR="/etc/wireguard"
 WG_CONF="$WG_DIR/wg0.conf"
 WG_INIT="/etc/init.d/wireguard"
 
+NEW_TVHEADEND_IP="10.8.0.113"
+NEW_TVHEADEND_PORT="9981"
+
 # ------------------------------------------------------------------------------
 # FUNCIONES DE UTILIDAD
 # ------------------------------------------------------------------------------
@@ -304,6 +307,8 @@ step_8_install_scripts() {
         sed -i "s|CLIENT_USER=\"\"|CLIENT_USER=\"$CLIENT_USER\"|g" /usr/script/downloadLdC.sh
         sed -i "s|CLIENT_PASS=\"\"|CLIENT_PASS=\"$CLIENT_PASS\"|g" /usr/script/downloadLdC.sh
         sed -i "s|SERVICE_TYPE=\"\"|SERVICE_TYPE=\"$SERVICE_TYPE\"|g" /usr/script/downloadLdC.sh
+        sed -i "s|^NEW_TVHEADEND_IP=\"[^\"]*\"|NEW_TVHEADEND_IP=\"$NEW_TVHEADEND_IP\"|g" /usr/script/downloadLdC.sh
+        sed -i "s|^NEW_TVHEADEND_PORT=\"[^\"]*\"|NEW_TVHEADEND_PORT=\"$NEW_TVHEADEND_PORT\"|g" /usr/script/downloadLdC.sh
         chmod +x /usr/script/downloadLdC.sh
         /usr/script/downloadLdC.sh
     fi

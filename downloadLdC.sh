@@ -45,10 +45,14 @@ for file in ListaDeCanales-master/*.tv ListaDeCanales-master/*.tv_org; do
         # Reemplazar usuario y password (genérico: todo entre http%3a// y @)
         # Esto funciona independientemente de las credenciales originales en el repo
         sed -i "s|http%3a//[^@]*@|http%3a//${CLIENT_USER}%3a${CLIENT_PASS}@|g" "$file"
+        sed -i "s|http%3A//[^@]*@|http%3A//${CLIENT_USER}%3A${CLIENT_PASS}@|g" "$file"
+        sed -i "s|http://[^@]*@|http://${CLIENT_USER}:${CLIENT_PASS}@|g" "$file"
         
         # Reemplazar IP y puerto (genérico: todo IP:PUERTO después de @)
         # Esto funciona independientemente de la IP original en el repo
         sed -i "s|@[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*%3a[0-9]*|@${NEW_TVHEADEND_IP}%3a${NEW_TVHEADEND_PORT}|g" "$file"
+        sed -i "s|@[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*%3A[0-9]*|@${NEW_TVHEADEND_IP}%3A${NEW_TVHEADEND_PORT}|g" "$file"
+        sed -i "s|@[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*:[0-9]*|@${NEW_TVHEADEND_IP}:${NEW_TVHEADEND_PORT}|g" "$file"
         
         # Reemplazar tipo de servicio (4097=gstreamer, 5001=gstplayer, 5002=exteplayer3)
         if [ ! -z "$SERVICE_TYPE" ]; then
