@@ -15,6 +15,12 @@ if [ ! -z "$1" ]; then
     echo "Tipo de servicio forzado por argumento: $SERVICE_TYPE"
 fi
 
+if [ -z "$CLIENT_USER" ] || [ -z "$CLIENT_PASS" ]; then
+    echo "ERROR: CLIENT_USER/CLIENT_PASS vacíos. Este script debe estar personalizado en /usr/script/downloadLdC.sh"
+    echo "Ejemplo: CLIENT_USER=\"usuario\" y CLIENT_PASS=\"pass\""
+    exit 1
+fi
+
 # Valores a reemplazar del GitHub (URL-encoded)
 # OLD_USER y OLD_IP ya no son necesarios porque se hace un reemplazo genérico
 
@@ -68,7 +74,7 @@ done
 # ========================================
 echo ""
 echo "Verificando URLs modificadas:"
-grep "http%3a" ListaDeCanales-master/*.tv 2>/dev/null | head -3
+grep -E "http%3a|http%3A|http://" ListaDeCanales-master/*.tv 2>/dev/null | head -3
 
 # ========================================
 # COPIAR ARCHIVOS MODIFICADOS
