@@ -27,14 +27,14 @@ fi
 # ========================================
 # LIMPIEZA Y DESCARGA
 # ========================================
-rm -f /etc/enigma2/master.zip
+rm -f /etc/enigma2/master.zip*
 rm -rf /etc/enigma2/ListaDeCanales-master/
 
 cd /etc/enigma2/
 
 echo "Descargando lista de canales..."
-wget --no-check-certificate https://github.com/djgueto/ListaDeCanales/archive/master.zip
-unzip -q master.zip
+wget --no-check-certificate -O /etc/enigma2/master.zip https://github.com/djgueto/ListaDeCanales/archive/master.zip
+unzip -q /etc/enigma2/master.zip
 
 # ========================================
 # MODIFICAR ARCHIVOS (URL-ENCODED)
@@ -88,7 +88,7 @@ cp ListaDeCanales-master/lamedb /etc/enigma2/ 2>/dev/null
 # ========================================
 # LIMPIEZA
 # ========================================
-rm -f master.zip
+rm -f /etc/enigma2/master.zip*
 rm -rf ListaDeCanales-master/
 
 # ========================================
