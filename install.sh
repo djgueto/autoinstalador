@@ -271,6 +271,15 @@ step_7_configure_wireguard() {
                 cat > "$WG_CONF" < /dev/tty
 
                 if [ -s "$WG_CONF" ]; then
+                    if [ -f "$WG_DIR/wg1.conf" ] || ip link show wg1 > /dev/null 2>&1; then
+                        log_warn "Detectado wg1 (config/interfaz). Eliminando para evitar conflicto con wg0..."
+                        if [ -x "/usr/bin/wg-quick" ]; then
+                            /usr/bin/wg-quick down wg1 > /dev/null 2>&1
+                        fi
+                        ip link delete wg1 > /dev/null 2>&1
+                        rm -f "$WG_DIR/wg1.conf"
+                    fi
+
                     log_info "Generando script de inicio WireGuard..."
                     create_wireguard_init_script
                     
