@@ -271,15 +271,6 @@ step_7_configure_wireguard() {
                 cat > "$WG_CONF" < /dev/tty
 
                 if [ -s "$WG_CONF" ]; then
-                    if [ -f "$WG_DIR/wg1.conf" ] || ip link show wg1 > /dev/null 2>&1; then
-                        log_warn "Detectado wg1 (config/interfaz). Eliminando para evitar conflicto con wg0..."
-                        if [ -x "/usr/bin/wg-quick" ]; then
-                            /usr/bin/wg-quick down wg1 > /dev/null 2>&1
-                        fi
-                        ip link delete wg1 > /dev/null 2>&1
-                        rm -f "$WG_DIR/wg1.conf"
-                    fi
-
                     log_info "Generando script de inicio WireGuard..."
                     create_wireguard_init_script
                     
@@ -295,6 +286,28 @@ step_7_configure_wireguard() {
                     
                     update-rc.d wireguard defaults > /dev/null 2>&1
                     "$WG_INIT" start
+
+                    local WAIT=0
+                    while [ $WAIT -lt 30 ]; do
+                        if ip link show wg0 > /dev/null 2>&1; then
+                            break
+                        fi
+                        sleep 1
+                        WAIT=$((WAIT + 1))
+                    done
+
+                    if ip link show wg0 > /dev/null 2>&1; then
+                        if [ -f "$WG_DIR/wg1.conf" ] || ip link show wg1 > /dev/null 2>&1; then
+                            log_warn "wg0 ya está arriba. Eliminando wg1 para evitar conflicto..."
+                            if [ -x "/usr/bin/wg-quick" ]; then
+                                /usr/bin/wg-quick down wg1 > /dev/null 2>&1
+                            fi
+                            ip link delete wg1 > /dev/null 2>&1
+                            rm -f "$WG_DIR/wg1.conf"
+                        fi
+                    else
+                        log_warn "wg0 no se detecta arriba; no se elimina wg1 para evitar perder conexión."
+                    fi
                 else
                     log_error "Archivo wg0.conf vacío."
                 fi
