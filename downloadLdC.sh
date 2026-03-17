@@ -96,9 +96,31 @@ rm -rf ListaDeCanales-master/
 # ========================================
 echo ""
 echo "Recargando Enigma2..."
+BOOT_REF=""
+if [ -f /etc/enigma2/settings ]; then
+    BOOT_REF="$(grep -m1 '^config\.misc\.bootVideoService=' /etc/enigma2/settings 2>/dev/null | cut -d= -f2-)"
+    if [ -z "$BOOT_REF" ]; then
+        BOOT_REF="$(grep -m1 '^config\.tv\.lastservice=' /etc/enigma2/settings 2>/dev/null | cut -d= -f2-)"
+    fi
+fi
+
+CURRENT_REF="$(wget -q -O - http://127.0.0.1/web/getcurrent 2>/dev/null | sed -n 's/.*<e2servicereference>\(.*\)<\/e2servicereference>.*/\1/p')"
+
 wget -q -O - http://127.0.0.1/web/servicelistreload?mode=0
 sleep 2
-wget -q -O - http://127.0.0.1/web/powerstate?newstate=3
+
+REF_TO_ZAP=""
+if [ -n "$BOOT_REF" ]; then
+    REF_TO_ZAP="$BOOT_REF"
+elif [ -n "$CURRENT_REF" ]; then
+    REF_TO_ZAP="$CURRENT_REF"
+fi
+
+if [ -n "$REF_TO_ZAP" ]; then
+    wget -q -O - "http://127.0.0.1/web/zap?sRef=$REF_TO_ZAP" 2>/dev/null
+    sleep 2
+    wget -q -O - "http://127.0.0.1/web/zap?sRef=$REF_TO_ZAP" 2>/dev/null
+fi
 
 echo ""
 echo "========================================"
