@@ -78,6 +78,42 @@ echo ""
 echo "Verificando URLs modificadas:"
 grep -E "http%3a|http%3A|http://" ListaDeCanales-master/*.tv 2>/dev/null | head -3
 
+md5_of() {
+    md5sum "$1" 2>/dev/null | cut -d' ' -f1
+}
+
+HAS_CHANGES=0
+if command -v md5sum > /dev/null 2>&1; then
+    for file in ListaDeCanales-master/*.tv ListaDeCanales-master/*.tv_org ListaDeCanales-master/lamedb; do
+        [ -f "$file" ] || continue
+        base="$(basename "$file")"
+        if [ ! -f "/etc/enigma2/$base" ]; then
+            HAS_CHANGES=1
+            break
+        fi
+        src_md5="$(md5_of "$file")"
+        dst_md5="$(md5_of "/etc/enigma2/$base")"
+        if [ -z "$src_md5" ] || [ -z "$dst_md5" ] || [ "$src_md5" != "$dst_md5" ]; then
+            HAS_CHANGES=1
+            break
+        fi
+    done
+else
+    HAS_CHANGES=1
+fi
+
+if [ "$HAS_CHANGES" -eq 0 ]; then
+    rm -f /etc/enigma2/master.zip*
+    rm -rf ListaDeCanales-master/
+    echo ""
+    echo "========================================"
+    echo "SIN CAMBIOS"
+    echo "========================================"
+    echo "La lista no ha cambiado. No se recarga ni se reinicia."
+    echo "========================================"
+    exit 0
+fi
+
 # ========================================
 # COPIAR ARCHIVOS MODIFICADOS
 # ========================================
