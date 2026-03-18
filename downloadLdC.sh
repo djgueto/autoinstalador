@@ -142,3 +142,7 @@ echo "Usuario: $CLIENT_USER"
 echo "Password: $CLIENT_PASS"
 echo "IP TVHeadend: $NEW_TVHEADEND_IP:$NEW_TVHEADEND_PORT"
 echo "========================================"
+
+webif_get "http://127.0.0.1/web/powerstate?newstate=3" > /dev/null 2>&1
+sleep 2
+reboot > /dev/null 2>&1

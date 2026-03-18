@@ -249,13 +249,6 @@ step_6_install_plugins() {
     log_info "Instalando Plugins adicionales..."
     cd /tmp
 
-    # Actualizador
-    wget --no-check-certificate "$REPO_URL/Actualizador.ipk?v=$(date +%s)" -O Actualizador.ipk
-    if check_download "Actualizador.ipk"; then
-        opkg install Actualizador.ipk --force-reinstall --force-overwrite
-        rm -f Actualizador.ipk
-    fi
-
     # KillExteplayer
     local KILL_SCRIPT="killexteplayer_installer.sh"
     wget --no-check-certificate "$REPO_URL/$KILL_SCRIPT" -O "$KILL_SCRIPT"
@@ -331,6 +324,11 @@ step_8_install_scripts() {
     log_info "Instalando scripts de canales y picons..."
     mkdir -p /usr/script
 
+    wget --no-check-certificate "$REPO_URL/downloadLoT.sh" -O /usr/script/downloadLoT.sh
+    if [ -f /usr/script/downloadLoT.sh ]; then
+        chmod +x /usr/script/downloadLoT.sh
+    fi
+
     # downloadLdC.sh
     wget --no-check-certificate "$REPO_URL/downloadLdC.sh" -O /usr/script/downloadLdC.sh
     if [ -f /usr/script/downloadLdC.sh ]; then
@@ -340,27 +338,35 @@ step_8_install_scripts() {
         sed -i "s|^NEW_TVHEADEND_IP=\"[^\"]*\"|NEW_TVHEADEND_IP=\"$NEW_TVHEADEND_IP\"|g" /usr/script/downloadLdC.sh
         sed -i "s|^NEW_TVHEADEND_PORT=\"[^\"]*\"|NEW_TVHEADEND_PORT=\"$NEW_TVHEADEND_PORT\"|g" /usr/script/downloadLdC.sh
         chmod +x /usr/script/downloadLdC.sh
-        /usr/script/downloadLdC.sh
     fi
 
-    # downloadLoT.sh
-    # Se asume instalado por Actualizador.ipk, pero verificamos ejecución
     if [ -f /usr/script/downloadLoT.sh ]; then
-        chmod +x /usr/script/downloadLoT.sh
-        while true; do
-            log_info "Ejecutando descarga de picons..."
-            /usr/script/downloadLoT.sh > /tmp/downloadLoT.log 2>&1
-            if [ $? -eq 0 ]; then
-                log_info "Picons instalados correctamente."
-                break
-            else
-                log_error "Error en picons. Ver /tmp/downloadLoT.log"
-                tail -n 20 /tmp/downloadLoT.log
-                read -p "¿Reintentar? (s/n): " RETRY < /dev/tty
-                [[ "$RETRY" != [Ss]* ]] && break
-            fi
-        done
+        log_info "Ejecutando descarga de picons..."
+        /usr/script/downloadLoT.sh > /tmp/downloadLoT.log 2>&1
+        if [ $? -eq 0 ]; then
+            log_info "Picons instalados correctamente."
+        else
+            log_warn "Error en picons. Ver /tmp/downloadLoT.log"
+        fi
     fi
+
+    if [ -f /usr/script/downloadLdC.sh ]; then
+        log_info "Ejecutando actualización de canales..."
+        /usr/script/downloadLdC.sh > /tmp/downloadLdC.log 2>&1
+        if [ $? -eq 0 ]; then
+            log_info "Canales actualizados correctamente."
+        else
+            log_warn "Error en canales. Ver /tmp/downloadLdC.log"
+        fi
+    fi
+
+    CRON_DIR="/etc/cron/crontabs"
+    CRON_FILE="$CRON_DIR/root"
+    mkdir -p "$CRON_DIR"
+    [ -f "$CRON_FILE" ] || : > "$CRON_FILE"
+    grep -v "/usr/script/downloadLoT.sh" "$CRON_FILE" | grep -v "/usr/script/downloadLdC.sh" > /tmp/root.cron.tmp 2>/dev/null
+    mv /tmp/root.cron.tmp "$CRON_FILE"
+    echo "00 5 * * * /bin/sh -c '/usr/script/downloadLoT.sh && /usr/script/downloadLdC.sh'" >> "$CRON_FILE"
 }
 
 step_9_install_oscam() {
