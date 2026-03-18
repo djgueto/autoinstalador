@@ -97,6 +97,13 @@ step_0_init_system() {
     read -p "Introduce el USUARIO: " CLIENT_USER < /dev/tty
     read -p "Introduce la CONTRASEÑA: " CLIENT_PASS < /dev/tty
     echo ""
+
+    read -p "IP TVHeadend (Enter para $NEW_TVHEADEND_IP): " INPUT_TVH_IP < /dev/tty
+    [ -n "$INPUT_TVH_IP" ] && NEW_TVHEADEND_IP="$INPUT_TVH_IP"
+    read -p "Puerto TVHeadend (Enter para $NEW_TVHEADEND_PORT): " INPUT_TVH_PORT < /dev/tty
+    [ -n "$INPUT_TVH_PORT" ] && NEW_TVHEADEND_PORT="$INPUT_TVH_PORT"
+    echo ""
+
     read -p "¿Desea instalar OSCam (oscam-conclave)? (s/n): " INSTALL_OSCAM < /dev/tty
     echo ""
     echo "Tipo de Servicio (por defecto 4097):"
@@ -111,6 +118,7 @@ step_0_init_system() {
     echo "-------------------------------------------------"
     echo "Usuario: $CLIENT_USER"
     echo "Pass:    $CLIENT_PASS"
+    echo "TVH:     $NEW_TVHEADEND_IP:$NEW_TVHEADEND_PORT"
     echo "Tipo:    $SERVICE_TYPE"
     echo "OSCam:   $INSTALL_OSCAM"
     echo "-------------------------------------------------"

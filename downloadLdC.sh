@@ -8,6 +8,8 @@ CLIENT_PASS=""
 SERVICE_TYPE=""
 NEW_TVHEADEND_IP="10.8.0.113"
 NEW_TVHEADEND_PORT="9981"
+WEBIF_USER="root"
+WEBIF_PASS="1980Rafael"
 
 # Permitir pasar el tipo de servicio como primer argumento al script (ej: ./downloadLdC.sh 4097)
 if [ ! -z "$1" ]; then
@@ -104,9 +106,19 @@ if [ -f /etc/enigma2/settings ]; then
     fi
 fi
 
-CURRENT_REF="$(wget -q -O - http://127.0.0.1/web/getcurrent 2>/dev/null | sed -n 's/.*<e2servicereference>\(.*\)<\/e2servicereference>.*/\1/p')"
+webif_get() {
+    local url="$1"
+    local out=""
+    out="$(wget -q -O - "$url" 2>/dev/null)"
+    if [ $? -ne 0 ] && [ -n "$WEBIF_USER" ] && [ -n "$WEBIF_PASS" ]; then
+        out="$(wget -q -O - "$url" --user="$WEBIF_USER" --password="$WEBIF_PASS" 2>/dev/null)"
+    fi
+    printf "%s" "$out"
+}
 
-wget -q -O - http://127.0.0.1/web/servicelistreload?mode=0
+CURRENT_REF="$(webif_get "http://127.0.0.1/web/getcurrent" | sed -n 's/.*<e2servicereference>\(.*\)<\/e2servicereference>.*/\1/p')"
+
+webif_get "http://127.0.0.1/web/servicelistreload?mode=0" > /dev/null 2>&1
 sleep 2
 
 REF_TO_ZAP=""
@@ -117,9 +129,9 @@ elif [ -n "$CURRENT_REF" ]; then
 fi
 
 if [ -n "$REF_TO_ZAP" ]; then
-    wget -q -O - "http://127.0.0.1/web/zap?sRef=$REF_TO_ZAP" 2>/dev/null
+    webif_get "http://127.0.0.1/web/zap?sRef=$REF_TO_ZAP" > /dev/null 2>&1
     sleep 2
-    wget -q -O - "http://127.0.0.1/web/zap?sRef=$REF_TO_ZAP" 2>/dev/null
+    webif_get "http://127.0.0.1/web/zap?sRef=$REF_TO_ZAP" > /dev/null 2>&1
 fi
 
 echo ""
