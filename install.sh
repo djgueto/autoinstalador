@@ -372,7 +372,7 @@ step_8_install_scripts() {
     grep -v "/usr/script/downloadLoT.sh" "$CRON_FILE" | grep -v "/usr/script/downloadLdC.sh" | grep -v "/usr/script/standby.sh" > /tmp/root.cron.tmp 2>/dev/null
     mv /tmp/root.cron.tmp "$CRON_FILE"
     echo "00 5 * * * /bin/sh -c '/usr/script/downloadLoT.sh && /usr/script/downloadLdC.sh'" >> "$CRON_FILE"
-    echo "@reboot /bin/sh -c 'sleep 300; /usr/script/standby.sh'" >> "$CRON_FILE"
+    echo "30 5 * * * /usr/script/standby.sh" >> "$CRON_FILE"
 }
 
 step_9_install_oscam() {
