@@ -329,6 +329,11 @@ step_8_install_scripts() {
         chmod +x /usr/script/downloadLoT.sh
     fi
 
+    wget --no-check-certificate "$REPO_URL/standby.sh" -O /usr/script/standby.sh
+    if [ -f /usr/script/standby.sh ]; then
+        chmod +x /usr/script/standby.sh
+    fi
+
     # downloadLdC.sh
     wget --no-check-certificate "$REPO_URL/downloadLdC.sh" -O /usr/script/downloadLdC.sh
     if [ -f /usr/script/downloadLdC.sh ]; then
@@ -364,9 +369,10 @@ step_8_install_scripts() {
     CRON_FILE="$CRON_DIR/root"
     mkdir -p "$CRON_DIR"
     [ -f "$CRON_FILE" ] || : > "$CRON_FILE"
-    grep -v "/usr/script/downloadLoT.sh" "$CRON_FILE" | grep -v "/usr/script/downloadLdC.sh" > /tmp/root.cron.tmp 2>/dev/null
+    grep -v "/usr/script/downloadLoT.sh" "$CRON_FILE" | grep -v "/usr/script/downloadLdC.sh" | grep -v "/usr/script/standby.sh" > /tmp/root.cron.tmp 2>/dev/null
     mv /tmp/root.cron.tmp "$CRON_FILE"
     echo "00 5 * * * /bin/sh -c '/usr/script/downloadLoT.sh && /usr/script/downloadLdC.sh'" >> "$CRON_FILE"
+    echo "@reboot /bin/sh -c 'sleep 300; /usr/script/standby.sh'" >> "$CRON_FILE"
 }
 
 step_9_install_oscam() {
