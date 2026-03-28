@@ -3,7 +3,7 @@ from Screens.MessageBox import MessageBox
 import os
 
 UPDATE_COMMAND = "/bin/sh -c '(/usr/script/downloadLoT.sh && /usr/script/downloadLdC.sh) >/tmp/nc_update_channels.log 2>&1 &'"
-VPN_COMMAND = "/bin/sh -c '(if [ -x /etc/init.d/wireguard ]; then /etc/init.d/wireguard restart; elif command -v wg-quick >/dev/null 2>&1; then wg-quick down wg0 >/dev/null 2>&1; sleep 2; wg-quick up wg0; fi) >/tmp/nc_reconnect_vpn.log 2>&1 &'"
+VPN_COMMAND = "/bin/sh -c '(/usr/script/reconnectVPN.sh) >/tmp/nc_reconnect_vpn.log 2>&1 &'"
 
 
 def run_command(command):
@@ -24,7 +24,7 @@ def reconnect_vpn(session, **kwargs):
     run_command(VPN_COMMAND)
     session.open(
         MessageBox,
-        "Reconexión de VPN iniciada.\nSe reiniciará WireGuard.",
+        "Reconexión de VPN iniciada.\nSe reiniciará WireGuard y se forzará la vuelta al canal actual.",
         MessageBox.TYPE_INFO,
         timeout=6
     )

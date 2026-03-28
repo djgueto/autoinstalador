@@ -341,6 +341,11 @@ step_8_install_scripts() {
         chmod +x /usr/script/standby.sh
     fi
 
+    wget --no-check-certificate "$REPO_URL/reconnectVPN.sh" -O /usr/script/reconnectVPN.sh
+    if [ -f /usr/script/reconnectVPN.sh ]; then
+        chmod +x /usr/script/reconnectVPN.sh
+    fi
+
     # downloadLdC.sh
     wget --no-check-certificate "$REPO_URL/downloadLdC.sh" -O /usr/script/downloadLdC.sh
     if [ -f /usr/script/downloadLdC.sh ]; then
