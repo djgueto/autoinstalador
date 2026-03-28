@@ -256,6 +256,13 @@ step_6_install_plugins() {
         sh "$KILL_SCRIPT"
         rm -f "$KILL_SCRIPT"
     fi
+
+    local QUICK_ACTIONS_SCRIPT="nc_quick_actions_installer.sh"
+    wget --no-check-certificate "$REPO_URL/$QUICK_ACTIONS_SCRIPT" -O "$QUICK_ACTIONS_SCRIPT"
+    if check_download "$QUICK_ACTIONS_SCRIPT"; then
+        sh "$QUICK_ACTIONS_SCRIPT" "$REPO_URL"
+        rm -f "$QUICK_ACTIONS_SCRIPT"
+    fi
     cd - > /dev/null
 }
 
