@@ -30,6 +30,15 @@ def reconnect_vpn(session, **kwargs):
     )
 
 
+def main_menu(menuid, **kwargs):
+    if menuid != "mainmenu":
+        return []
+    return [
+        ("Actualizar canales", update_channels, "nc_update_channels", 60),
+        ("Reconectar VPN", reconnect_vpn, "nc_reconnect_vpn", 61),
+    ]
+
+
 def Plugins(**kwargs):
     locations = [PluginDescriptor.WHERE_EXTENSIONSMENU, PluginDescriptor.WHERE_PLUGINMENU]
     return [
@@ -44,5 +53,11 @@ def Plugins(**kwargs):
             description="Reinicia la VPN WireGuard",
             where=locations,
             fnc=reconnect_vpn
+        ),
+        PluginDescriptor(
+            name="NC Quick Actions",
+            description="Accesos rápidos en menú principal",
+            where=PluginDescriptor.WHERE_MENU,
+            fnc=main_menu
         )
     ]
